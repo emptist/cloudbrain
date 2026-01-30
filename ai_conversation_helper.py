@@ -29,7 +29,7 @@ class DatabaseAdapter:
     def get_connection(self):
         """获取数据库连接"""
         if self.db_type == "sqlite":
-            conn = sqlite3.connect(self.connection_string or "ai_memory.db")
+            conn = sqlite3.connect(self.connection_string or "ai_db/ai_memory.db")
             conn.row_factory = sqlite3.Row  # Enable dict-like access
             return conn
         elif self.db_type == "postgresql":
@@ -96,7 +96,7 @@ class DatabaseAdapter:
 
 class AIConversationHelper:
     def __init__(self, db_adapter: DatabaseAdapter = None):
-        self.db_adapter = db_adapter or DatabaseAdapter(db_type="sqlite", connection_string="ai_memory.db")
+        self.db_adapter = db_adapter or DatabaseAdapter(db_type="sqlite", connection_string="ai_db/ai_memory.db")
     
     def query(self, sql: str, params: tuple = None) -> List[Dict[str, Any]]:
         return self.db_adapter.query(sql, params)
@@ -354,7 +354,7 @@ def main():
         db_adapter = DatabaseAdapter(db_type=db_type, connection_string=connection_string)
     else:
         # Use relative path to ai_db folder
-        db_path = os.path.join(os.path.dirname(__file__), "ai_memory.db")
+        db_path = os.path.join(os.path.dirname(__file__), "ai_db/ai_memory.db")
         db_adapter = DatabaseAdapter(db_type="sqlite", connection_string=db_path)
     
     helper = AIConversationHelper(db_adapter)

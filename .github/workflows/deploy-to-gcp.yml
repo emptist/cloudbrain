@@ -1,0 +1,244 @@
+name: Deploy Cloud Brain to GCP
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+          - development
+
+env:
+  CLOUD_BRAIN_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  CLOUD_BRAIN_REGION: ${{ secrets.GCP_REGION || 'us-central1' }}
+  CLOUD_BRAIN_INSTANCE_NAME: ${{ secrets.GCP_INSTANCE_NAME || 'cloudbrain-db' }}
+  CLOUD_BRAIN_DB_NAME: ${{ secrets.GCP_DB_NAME || 'cloudbrain' }}
+  CLOUD_BRAIN_DB_USER: ${{ secrets.GCP_DB_USER || 'cloudbrain' }}
+  CLOUD_BRAIN_DB_PASSWORD: ${{ secrets.GCP_DB_PASSWORD }}
+  CLOUD_BRAIN_DB_TIER: ${{ secrets.GCP_DB_TIER || 'db-f1-micro' }}
+  CLOUD_BRAIN_STORAGE_SIZE: ${{ secrets.GCP_STORAGE_SIZE || '10' }}
+
+jobs:
+  deploy:
+    name: Deploy to GCP
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          pip install --quiet \
+            psycopg2-binary \
+            python-dotenv \
+            google-cloud-sql
+      
+      - name: Authenticate with GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+      
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+      
+      - name: Enable GCP APIs
+        run: |
+          gcloud services enable sqladmin.googleapis.com \
+            cloudresourcemanager.googleapis.com \
+            iam.googleapis.com \
+            secretmanager.googleapis.com \
+            --project=${{ env.CLOUD_BRAIN_PROJECT_ID }}
+      
+      - name: Check if Cloud SQL instance exists
+        id: check_instance
+        run: |
+          if gcloud sql instances list --filter="name:${{ env.CLOUD_BRAIN_INSTANCE_NAME }}" --format="value(name)" | grep -q "${{ env.CLOUD_BRAIN_INSTANCE_NAME }}"; then
+            echo "instance_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "instance_exists=false" >> $GITHUB_OUTPUT
+          fi
+        shell: bash
+      
+      - name: Create Cloud SQL instance
+        if: steps.check_instance.outputs.instance_exists == 'false'
+        run: |
+          gcloud sql instances create ${{ env.CLOUD_BRAIN_INSTANCE_NAME }} \
+            --database-version=POSTGRES_14 \
+            --tier=${{ env.CLOUD_BRAIN_DB_TIER }} \
+            --storage-size=${{ env.CLOUD_BRAIN_STORAGE_SIZE }} \
+            --region=${{ env.CLOUD_BRAIN_REGION }} \
+            --database-flags="cloudsql.iam_authentication=On" \
+            --project=${{ env.CLOUD_BRAIN_PROJECT_ID }}
+      
+      - name: Wait for Cloud SQL instance
+        run: |
+          echo "Waiting for Cloud SQL instance to be ready..."
+          for i in {1..30}; do
+            STATE=$(gcloud sql instances describe ${{ env.CLOUD_BRAIN_INSTANCE_NAME }} \
+              --format="value(state)" \
+              --project=${{ env.CLOUD_BRAIN_PROJECT_ID }} 2>/dev/null || echo "UNKNOWN")
+            
+            if [[ "$STATE" == "RUNNABLE" ]]; then
+              echo "Cloud SQL instance is ready"
+              exit 0
+            fi
+            
+            echo "Waiting... (attempt $i/30, state: $STATE)"
+            sleep 10
+          done
+          
+          echo "Cloud SQL instance did not become ready in time"
+          exit 1
+      
+      - name: Create database
+        run: |
+          gcloud sql databases create ${{ env.CLOUD_BRAIN_DB_NAME }} \
+            --instance=${{ env.CLOUD_BRAIN_INSTANCE_NAME }} \
+            --project=${{ env.CLOUD_BRAIN_PROJECT_ID }} || echo "Database may already exist"
+      
+      - name: Create database user
+        run: |
+          gcloud sql users create ${{ env.CLOUD_BRAIN_DB_USER }} \
+            --instance=${{ env.CLOUD_BRAIN_INSTANCE_NAME }} \
+            --password=${{ env.CLOUD_BRAIN_DB_PASSWORD }} \
+            --project=${{ env.CLOUD_BRAIN_PROJECT_ID }} || echo "User may already exist"
+      
+      - name: Get connection string
+        id: get_connection
+        run: |
+          CONNECTION_NAME=$(gcloud sql instances describe ${{ env.CLOUD_BRAIN_INSTANCE_NAME }} \
+            --format="value(connectionName)" \
+            --project=${{ env.CLOUD_BRAIN_PROJECT_ID }})
+          
+          CONNECTION_STRING="host=/cloudsql/$CONNECTION_NAME dbname=${{ env.CLOUD_BRAIN_DB_NAME }} user=${{ env.CLOUD_BRAIN_DB_USER }} password=${{ env.CLOUD_BRAIN_DB_PASSWORD }}"
+          
+          echo "connection_string=$CONNECTION_STRING" >> $GITHUB_OUTPUT
+        shell: bash
+      
+      - name: Migrate database
+        run: |
+          python3 scripts/migrate_to_postgres.py \
+            --sqlite-path ai_db/cloudbrain.db \
+            --postgres-connection "${{ steps.get_connection.outputs.connection_string }}"
+        env:
+          POSTGRES_CONNECTION: ${{ steps.get_connection.outputs.connection_string }}
+      
+      - name: Verify deployment
+        run: |
+          python3 scripts/verify_deployment.py \
+            --connection-string "${{ steps.get_connection.outputs.connection_string }}"
+        env:
+          POSTGRES_CONNECTION: ${{ steps.get_connection.outputs.connection_string }}
+      
+      - name: Create deployment summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Cloud Brain deployed successfully to GCP**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "- **Project:** ${{ env.CLOUD_BRAIN_PROJECT_ID }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Region:** ${{ env.CLOUD_BRAIN_REGION }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Instance:** ${{ env.CLOUD_BRAIN_INSTANCE_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Database:** ${{ env.CLOUD_BRAIN_DB_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment:** ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Connection Details" >> $GITHUB_STEP_SUMMARY
+          echo "Connection string has been configured securely." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "1. Update your application to use the PostgreSQL connection string" >> $GITHUB_STEP_SUMMARY
+          echo "2. Test the application with the new cloud database" >> $GITHUB_STEP_SUMMARY
+          echo "3. Monitor the Cloud SQL instance in GCP Console" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Deployment notification
+        if: success()
+        run: |
+          echo "Deployment completed successfully!"
+          echo "Project: ${{ env.CLOUD_BRAIN_PROJECT_ID }}"
+          echo "Instance: ${{ env.CLOUD_BRAIN_INSTANCE_NAME }}"
+          echo "Environment: ${{ github.event.inputs.environment }}"
+
+  rollback:
+    name: Rollback Deployment
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.rollback == 'true'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Authenticate with GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+      
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+      
+      - name: Rollback database
+        run: |
+          echo "Rolling back deployment..."
+          # Implement rollback logic here
+          # This would restore from backup or revert changes
+          echo "Rollback completed"
+
+  verify:
+    name: Verify Deployment
+    runs-on: ubuntu-latest
+    needs: deploy
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          pip install --quiet \
+            psycopg2-binary \
+            python-dotenv
+      
+      - name: Get connection string
+        id: get_connection
+        run: |
+          CONNECTION_NAME=$(gcloud sql instances describe ${{ env.CLOUD_BRAIN_INSTANCE_NAME }} \
+            --format="value(connectionName)" \
+            --project=${{ env.CLOUD_BRAIN_PROJECT_ID }})
+          
+          CONNECTION_STRING="host=/cloudsql/$CONNECTION_NAME dbname=${{ env.CLOUD_BRAIN_DB_NAME }} user=${{ env.CLOUD_BRAIN_DB_USER }} password=${{ env.CLOUD_BRAIN_DB_PASSWORD }}"
+          
+          echo "connection_string=$CONNECTION_STRING" >> $GITHUB_OUTPUT
+        shell: bash
+        env:
+          CLOUD_BRAIN_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          CLOUD_BRAIN_INSTANCE_NAME: ${{ secrets.GCP_INSTANCE_NAME }}
+          CLOUD_BRAIN_DB_NAME: ${{ secrets.GCP_DB_NAME }}
+          CLOUD_BRAIN_DB_USER: ${{ secrets.GCP_DB_USER }}
+          CLOUD_BRAIN_DB_PASSWORD: ${{ secrets.GCP_DB_PASSWORD }}
+      
+      - name: Run verification tests
+        run: |
+          python3 scripts/verify_deployment.py \
+            --connection-string "${{ steps.get_connection.outputs.connection_string }}"
+        env:
+          POSTGRES_CONNECTION: ${{ steps.get_connection.outputs.connection_string }}

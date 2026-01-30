@@ -18,7 +18,7 @@ def initialize_cloud_brain_database():
     print("🚀 Initializing CloudBrain (CB) / 云宫迅音之超级悟空 (Super Cloud Monkey King) Database...")
     
     # Create the database file
-    db_path = 'cloudbrain.db'
+    db_path = 'ai_db/cloudbrain.db'
     
     # Remove existing file if it exists
     if os.path.exists(db_path):

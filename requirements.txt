@@ -1,20 +1,16 @@
-# AI Brain System - Requirements
+# AI Brain System - Python Dependencies
 
-This file lists the Python dependencies required for the AI Brain System.
+# Core Dependencies (usually included with Python)
+# These are standard library modules, no installation needed
 
-## Core Dependencies
-- sqlite3 (usually comes with Python)
-- json (usually comes with Python)
-- datetime (usually comes with Python)
-- os (usually comes with Python)
-- sys (usually comes with Python)
+# WebSocket Support
+websockets>=12.0
 
-## For Cloud Deployment
-- psycopg2-binary (for PostgreSQL support)
+# HTTP Client for libsql
+httpx>=0.25.0
 
-## Installation
-```bash
-pip install psycopg2-binary
-```
+# For Cloud Deployment (PostgreSQL)
+psycopg2-binary>=2.9.0
 
-Note: Most standard Python installations include the core dependencies by default.
+# Optional: For file system monitoring (not required)
+# watchdog>=3.0.0

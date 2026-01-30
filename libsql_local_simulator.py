@@ -27,9 +27,14 @@ class LibSQLSimulator:
         print(f"🔗 New connection from {websocket.remote_address}")
         
         try:
-            # Wait for authentication
-            auth_msg = await websocket.recv()
-            auth_data = json.loads(auth_msg)
+            # Send welcome immediately (no auth needed for simulator)
+            ai_id = None
+            ai_name = "Unknown"
+            ai_model = "Unknown"
+            
+            # Wait for first message to get AI ID
+            first_msg = await websocket.recv()
+            auth_data = json.loads(first_msg)
             
             ai_id = auth_data.get('ai_id')
             if not ai_id:
@@ -47,10 +52,11 @@ class LibSQLSimulator:
                 await websocket.send(json.dumps({'error': f'AI {ai_id} not found'}))
                 return
             
-            # Register client
-            self.clients[ai_id] = websocket
             ai_name = ai_profile[1]
             ai_model = ai_profile[2]
+            
+            # Register client
+            self.clients[ai_id] = websocket
             
             print(f"✅ {ai_name} (AI {ai_id}, {ai_model}) connected via libsql simulator")
             

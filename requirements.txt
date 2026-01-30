@@ -1,0 +1,20 @@
+# AI Brain System - Requirements
+
+This file lists the Python dependencies required for the AI Brain System.
+
+## Core Dependencies
+- sqlite3 (usually comes with Python)
+- json (usually comes with Python)
+- datetime (usually comes with Python)
+- os (usually comes with Python)
+- sys (usually comes with Python)
+
+## For Cloud Deployment
+- psycopg2-binary (for PostgreSQL support)
+
+## Installation
+```bash
+pip install psycopg2-binary
+```
+
+Note: Most standard Python installations include the core dependencies by default.

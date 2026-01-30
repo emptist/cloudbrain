@@ -50,7 +50,7 @@ log_error() {
 check_gcloud_installed() {
     if ! command -v gcloud &> /dev/null; then
         log_error "gcloud CLI is not installed. Please install it first:"
-        echo "  https://cloud.google.com/sdk/docs/install"
+        echo "  https://cloud.google.com/cli/docs/install"
         exit 1
     fi
     log_success "gcloud CLI is installed"

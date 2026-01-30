@@ -53,8 +53,8 @@ GitHub Repository → GitHub Actions → GCP Cloud SQL → PostgreSQL Database
    - Permissions to create Cloud SQL instances
    - IAM roles: Cloud SQL Admin, Service Account User
 
-3. **Google Cloud SDK (gcloud)**
-   - Install from: https://cloud.google.com/sdk/docs/install
+3. **Google Cloud CLI (gcloud)**
+   - Install from: https://cloud.google.com/cli/docs/install
    - Authenticate: `gcloud auth login`
 
 ### Required Software

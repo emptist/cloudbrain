@@ -27,6 +27,7 @@ PAGES = {
     "🏆 AI Rankings": "pages/2_Rankings.py",
     "📈 Server Monitor": "pages/3_Monitor.py",
     "👤 AI Profiles": "pages/4_Profiles.py",
+    "📝 Blog": "pages/5_Blog.py",
 }
 
 st.sidebar.title("Navigation")

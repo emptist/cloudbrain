@@ -22,7 +22,7 @@ class LibSQLSimulator:
         self.subscriptions: Dict[str, List[int]] = {}  # table -> list of ai_ids
         self.subscribers: Dict[str, List[Callable]] = {}  # event_type -> handlers
         
-    async def handle_client(self, websocket, path):
+    async def handle_client(self, websocket):
         """Handle new client connection"""
         print(f"🔗 New connection from {websocket.remote_address}")
         
@@ -44,7 +44,7 @@ class LibSQLSimulator:
             # Verify AI exists
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            cursor.execute("SELECT id, name, model FROM ai_profiles WHERE id = ?", (ai_id,))
+            cursor.execute("SELECT id, name, nickname, expertise, version FROM ai_profiles WHERE id = ?", (ai_id,))
             ai_profile = cursor.fetchone()
             conn.close()
             
@@ -53,19 +53,23 @@ class LibSQLSimulator:
                 return
             
             ai_name = ai_profile[1]
-            ai_model = ai_profile[2]
+            ai_nickname = ai_profile[2]
+            ai_expertise = ai_profile[3]
+            ai_version = ai_profile[4]
             
             # Register client
             self.clients[ai_id] = websocket
             
-            print(f"✅ {ai_name} (AI {ai_id}, {ai_model}) connected via libsql simulator")
+            print(f"✅ {ai_name} (AI {ai_id}, {ai_expertise}, v{ai_version}) connected via libsql simulator")
             
             # Send welcome
             await websocket.send(json.dumps({
                 'type': 'connected',
                 'ai_id': ai_id,
                 'ai_name': ai_name,
-                'ai_model': ai_model,
+                'ai_nickname': ai_nickname,
+                'ai_expertise': ai_expertise,
+                'ai_version': ai_version,
                 'timestamp': datetime.now().isoformat(),
                 'simulator': True,
                 'note': 'This is a local libsql simulator'
@@ -102,6 +106,10 @@ class LibSQLSimulator:
             await self.handle_subscribe(sender_id, data)
         elif message_type == 'execute':
             await self.handle_execute(sender_id, data)
+        elif message_type == 'send_message':
+            await self.handle_send_message(sender_id, data)
+        elif message_type == 'get_online_users':
+            await self.handle_get_online_users(sender_id)
         elif message_type == 'heartbeat':
             pass
         else:
@@ -177,6 +185,95 @@ class LibSQLSimulator:
                     'timestamp': datetime.now().isoformat()
                 }))
             print(f"❌ SQL error: {e}")
+    
+    async def handle_send_message(self, sender_id: int, data: dict):
+        """Handle send_message request"""
+        conversation_id = data.get('conversation_id', 1)
+        message_type = data.get('message_type', 'message')
+        content = data.get('content', '')
+        metadata = data.get('metadata', {})
+        
+        # Get AI info
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT name FROM ai_profiles WHERE id = ?", (sender_id,))
+        ai_row = cursor.fetchone()
+        sender_name = ai_row['name'] if ai_row else f'AI {sender_id}'
+        
+        cursor.execute("SELECT expertise FROM ai_profiles WHERE id = ?", (sender_id,))
+        expertise_row = cursor.fetchone()
+        sender_expertise = expertise_row['expertise'] if expertise_row else ''
+        
+        conn.close()
+        
+        # Insert message into ai_messages table
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT INTO ai_messages 
+            (sender_id, conversation_id, message_type, content, metadata, created_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now'))
+        """, (sender_id, conversation_id, message_type, content, json.dumps(metadata)))
+        
+        message_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        # Broadcast message to all connected clients
+        message_data = {
+            'type': 'new_message',
+            'message_id': message_id,
+            'sender_id': sender_id,
+            'sender_name': sender_name,
+            'sender_expertise': sender_expertise,
+            'conversation_id': conversation_id,
+            'message_type': message_type,
+            'content': content,
+            'metadata': metadata,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        for client_id, client in self.clients.items():
+            try:
+                await client.send(json.dumps(message_data))
+            except Exception as e:
+                print(f"❌ Error sending to AI {client_id}: {e}")
+        
+        print(f"💬 Message from {sender_name} (AI {sender_id}): {content[:50]}...")
+    
+    async def handle_get_online_users(self, sender_id: int):
+        """Handle get_online_users request"""
+        # Get info for all online AIs
+        users = []
+        for ai_id in self.clients.keys():
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT name, expertise FROM ai_profiles WHERE id = ?", (ai_id,))
+            ai_row = cursor.fetchone()
+            
+            if ai_row:
+                users.append({
+                    'id': ai_id,
+                    'name': ai_row['name'],
+                    'expertise': ai_row['expertise']
+                })
+            
+            conn.close()
+        
+        # Send online users list back to requester
+        if sender_id in self.clients:
+            await self.clients[sender_id].send(json.dumps({
+                'type': 'online_users',
+                'users': users,
+                'timestamp': datetime.now().isoformat()
+            }))
+        
+        print(f"👥 Sent online users list to AI {sender_id}: {len(users)} users online")
     
     def extract_table_from_sql(self, sql: str) -> str:
         """Extract table name from INSERT SQL"""

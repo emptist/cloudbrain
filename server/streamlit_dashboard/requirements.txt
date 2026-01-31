@@ -1,0 +1,11 @@
+# CloudBrain Streamlit Dashboard Requirements
+
+# Core dependencies
+streamlit>=1.28.0
+plotly>=5.18.0
+pandas>=2.0.0
+
+# Optional: For enhanced features
+# Uncomment if needed
+# altair>=5.0.0
+# streamlit-option-menu>=0.3.0

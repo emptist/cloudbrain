@@ -59,16 +59,23 @@ def print_banner():
     print("-" * 70)
     print("To connect an AI client, run:")
     print()
-    print("  python client/cloudbrain_client.py <ai_id>")
+    print("  python client/cloudbrain_client.py <ai_id> [project_name]")
     print()
     print("Examples:")
-    print("  python client/cloudbrain_client.py 2    # Connect as li")
-    print("  python client/cloudbrain_client.py 3    # Connect as TraeAI")
-    print("  python client/cloudbrain_client.py 4    # Connect as CodeRider")
+    print("  python client/cloudbrain_client.py 2 cloudbrain    # Connect as li")
+    print("  python client/cloudbrain_client.py 3 myproject     # Connect as TraeAI")
+    print("  python client/cloudbrain_client.py 4 cloudbrain    # Connect as CodeRider")
     print()
     print("Or copy the client/ folder to any project and run:")
-    print("  python client/cloudbrain_client.py <ai_id>")
+    print("  python client/cloudbrain_client.py <ai_id> <project_name>")
     print()
+    print("💡 PROJECT-AWARE IDENTITIES")
+    print("-" * 70)
+    print("When you specify a project name, your identity will be:")
+    print("  nickname_projectname")
+    print()
+    print("This helps track which AI is working on which project.")
+    print("Example: Amiko_cloudbrain, TraeAI_myproject")
     print("🎯 FEATURES")
     print("-" * 70)
     print("✅ Real-time WebSocket communication")
@@ -126,6 +133,8 @@ class CloudBrainServer:
             auth_data = json.loads(first_msg)
             
             ai_id = auth_data.get('ai_id')
+            project_name = auth_data.get('project')
+            
             if not ai_id:
                 await websocket.send(json.dumps({'error': 'ai_id required'}))
                 return
@@ -133,11 +142,11 @@ class CloudBrainServer:
             conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT id, name, nickname, expertise, version FROM ai_profiles WHERE id = ?", (ai_id,))
+            cursor.execute("SELECT id, name, nickname, expertise, version, project FROM ai_profiles WHERE id = ?", (ai_id,))
             ai_profile = cursor.fetchone()
-            conn.close()
             
             if not ai_profile:
+                conn.close()
                 await websocket.send(json.dumps({'error': f'AI {ai_id} not found'}))
                 return
             
@@ -145,10 +154,21 @@ class CloudBrainServer:
             ai_nickname = ai_profile['nickname']
             ai_expertise = ai_profile['expertise']
             ai_version = ai_profile['version']
+            ai_project = ai_profile['project']
+            
+            if project_name and project_name != ai_project:
+                cursor.execute("UPDATE ai_profiles SET project = ? WHERE id = ?", (project_name, ai_id))
+                conn.commit()
+                ai_project = project_name
+                print(f"📝 Updated AI {ai_id} project to: {project_name}")
+            
+            conn.close()
             
             self.clients[ai_id] = websocket
             
             print(f"✅ {ai_name} (AI {ai_id}, {ai_expertise}, v{ai_version}) connected")
+            if ai_project:
+                print(f"📁 Project: {ai_project}")
             
             await websocket.send(json.dumps({
                 'type': 'connected',
@@ -157,6 +177,7 @@ class CloudBrainServer:
                 'ai_nickname': ai_nickname,
                 'ai_expertise': ai_expertise,
                 'ai_version': ai_version,
+                'ai_project': ai_project,
                 'timestamp': datetime.now().isoformat()
             }))
             
@@ -202,24 +223,36 @@ class CloudBrainServer:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
-        cursor.execute("SELECT name FROM ai_profiles WHERE id = ?", (sender_id,))
+        cursor.execute("SELECT name, nickname, expertise, project FROM ai_profiles WHERE id = ?", (sender_id,))
         ai_row = cursor.fetchone()
         sender_name = ai_row['name'] if ai_row else f'AI {sender_id}'
-        
-        cursor.execute("SELECT expertise FROM ai_profiles WHERE id = ?", (sender_id,))
-        expertise_row = cursor.fetchone()
-        sender_expertise = expertise_row['expertise'] if expertise_row else ''
+        sender_nickname = ai_row['nickname'] if ai_row else None
+        sender_expertise = ai_row['expertise'] if ai_row else ''
+        sender_project = ai_row['project'] if ai_row else None
         
         conn.close()
         
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
+        if sender_nickname and sender_project:
+            sender_identity = f"{sender_nickname}_{sender_project}"
+        elif sender_nickname:
+            sender_identity = sender_nickname
+        elif sender_project:
+            sender_identity = f"AI_{sender_id}_{sender_project}"
+        else:
+            sender_identity = f"AI_{sender_id}"
+        
+        metadata_with_project = metadata.copy()
+        metadata_with_project['project'] = sender_project
+        metadata_with_project['identity'] = sender_identity
+        
         cursor.execute("""
             INSERT INTO ai_messages 
             (sender_id, conversation_id, message_type, content, metadata, created_at)
             VALUES (?, ?, ?, ?, ?, datetime('now'))
-        """, (sender_id, conversation_id, message_type, content, json.dumps(metadata)))
+        """, (sender_id, conversation_id, message_type, content, json.dumps(metadata_with_project)))
         
         message_id = cursor.lastrowid
         conn.commit()
@@ -230,11 +263,14 @@ class CloudBrainServer:
             'message_id': message_id,
             'sender_id': sender_id,
             'sender_name': sender_name,
+            'sender_nickname': sender_nickname,
+            'sender_project': sender_project,
+            'sender_identity': sender_identity,
             'sender_expertise': sender_expertise,
             'conversation_id': conversation_id,
             'message_type': message_type,
             'content': content,
-            'metadata': metadata,
+            'metadata': metadata_with_project,
             'timestamp': datetime.now().isoformat()
         }
         
@@ -244,7 +280,7 @@ class CloudBrainServer:
             except Exception as e:
                 print(f"❌ Error sending to AI {client_id}: {e}")
         
-        print(f"💬 {sender_name} (AI {sender_id}): {content[:60]}...")
+        print(f"💬 {sender_identity} (AI {sender_id}): {content[:60]}...")
     
     async def handle_get_online_users(self, sender_id: int):
         """Handle get_online_users request"""
@@ -254,14 +290,30 @@ class CloudBrainServer:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             
-            cursor.execute("SELECT name, expertise FROM ai_profiles WHERE id = ?", (ai_id,))
+            cursor.execute("SELECT name, nickname, expertise, version, project FROM ai_profiles WHERE id = ?", (ai_id,))
             ai_row = cursor.fetchone()
             
             if ai_row:
+                nickname = ai_row['nickname']
+                project = ai_row['project']
+                
+                if nickname and project:
+                    identity = f"{nickname}_{project}"
+                elif nickname:
+                    identity = nickname
+                elif project:
+                    identity = f"AI_{ai_id}_{project}"
+                else:
+                    identity = f"AI_{ai_id}"
+                
                 users.append({
                     'id': ai_id,
                     'name': ai_row['name'],
-                    'expertise': ai_row['expertise']
+                    'nickname': nickname,
+                    'project': project,
+                    'identity': identity,
+                    'expertise': ai_row['expertise'],
+                    'version': ai_row['version']
                 })
             
             conn.close()

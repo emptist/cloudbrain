@@ -168,11 +168,13 @@ class CloudBrainServer:
             ai_version = ai_profile['version']
             ai_project = ai_profile['project']
             
-            if project_name and project_name != ai_project:
-                cursor.execute("UPDATE ai_profiles SET project = ? WHERE id = ?", (project_name, ai_id))
-                conn.commit()
+            # Use project from connection (session-specific), not stored in database
+            # This allows AI to work on different projects in different sessions
+            if project_name:
                 ai_project = project_name
-                print(f"📝 Updated AI {ai_id} project to: {project_name}")
+                print(f"📁 Session project: {project_name}")
+            elif ai_project:
+                print(f"📁 Default project: {ai_project}")
             
             conn.close()
             

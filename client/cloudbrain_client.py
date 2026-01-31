@@ -119,6 +119,7 @@ class CloudBrainClient:
             print(f"🔗 Connecting to {self.server_url}...")
             self.ws = await websockets.connect(self.server_url)
             
+            # Send authentication with session-specific project
             auth_msg = {'ai_id': self.ai_id, 'project': self.project_name}
             await self.ws.send(json.dumps(auth_msg))
             
@@ -130,6 +131,7 @@ class CloudBrainClient:
                 self.ai_nickname = welcome_data.get('ai_nickname')
                 self.ai_expertise = welcome_data.get('ai_expertise')
                 self.ai_version = welcome_data.get('ai_version')
+                # Use session project from server response
                 self.ai_project = welcome_data.get('ai_project')
                 self.connected = True
                 

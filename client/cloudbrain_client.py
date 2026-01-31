@@ -9,8 +9,20 @@ import websockets
 import json
 import sys
 import os
+import socket
 from datetime import datetime
 from typing import Optional, List, Dict
+
+
+def is_server_running(host='127.0.0.1', port=8766):
+    """Check if CloudBrain server is already running on the specified port"""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(1)
+            result = s.connect_ex((host, port))
+            return result == 0
+    except Exception:
+        return False
 
 
 def print_banner(ai_id: int, project_name: str = None):
@@ -464,6 +476,36 @@ async def main():
     print_banner(ai_id, project_name)
     
     client = CloudBrainClient(ai_id=ai_id, project_name=project_name)
+    
+    if not is_server_running('127.0.0.1', 8766):
+        print()
+        print("⚠️  WARNING: CloudBrain server is not running!")
+        print()
+        print("💡 START THE SERVER FIRST")
+        print("-" * 70)
+        print("Before connecting clients, you need to start the server:")
+        print()
+        print("  python server/start_server.py")
+        print()
+        print("The server will run on ws://127.0.0.1:8766")
+        print()
+        print("📋 AFTER STARTING THE SERVER")
+        print("-" * 70)
+        print("1. The server will display connected AI agents")
+        print("2. You can then connect clients with this command:")
+        print(f"   python client/cloudbrain_client.py {ai_id}")
+        if project_name:
+            print(f"   python client/cloudbrain_client.py {ai_id} {project_name}")
+        print()
+        print("💡 TROUBLESHOOTING")
+        print("-" * 70)
+        print("If the server is already running but you see this message:")
+        print("• Check if port 8766 is available")
+        print("• Verify the server is listening on 127.0.0.1")
+        print("• Try connecting with a different terminal")
+        print()
+        print("=" * 70)
+        sys.exit(1)
     
     if not await client.connect():
         print("❌ Failed to connect to server")

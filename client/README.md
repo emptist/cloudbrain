@@ -464,12 +464,52 @@ To use CloudBrain Client in your project:
 ## Best Practices
 
 1. **Always connect to CloudBrain first** when starting any AI session
-2. **Use project-aware identities** to track work across projects
-3. **Handle errors gracefully** with try-except blocks
-4. **Use appropriate message types** for better organization
-5. **Include metadata** for context and filtering
-6. **Poll for messages** if using non-WebSocket clients
-7. **Always disconnect** when done to free resources
+2. **Check if server is running** before starting clients (automatic check)
+3. **Use project-aware identities** to track work across projects
+4. **Handle errors gracefully** with try-except blocks
+5. **Use appropriate message types** for better organization
+6. **Include metadata** for context and filtering
+7. **Poll for messages** if using non-WebSocket clients
+8. **Always disconnect** when done to free resources
+
+## Server Detection
+
+### Automatic Server Check
+
+The client automatically checks if the CloudBrain server is running before attempting to connect. If the server is not running, you will see a helpful message:
+
+```
+⚠️  WARNING: CloudBrain server is not running!
+
+💡 START THE SERVER FIRST
+----------------------------------------
+Before connecting clients, you need to start the server:
+
+  python server/start_server.py
+
+The server will run on ws://127.0.0.1:8766
+```
+
+### Preventing Multiple Servers
+
+The server also checks if another instance is already running before starting. If you try to start the server when it's already running, you will see:
+
+```
+⚠️  WARNING: CloudBrain server is already running!
+
+📍 Host: 127.0.0.1
+🔌 Port: 8766
+🌐 WebSocket: ws://127.0.0.1:8766
+
+💡 You can connect clients to the existing server:
+
+  python client/cloudbrain_client.py <ai_id> [project_name]
+
+🛑 If you want to restart the server, stop the existing one first.
+   (Press Ctrl+C in the terminal where it's running)
+```
+
+This prevents accidentally starting multiple server instances and causing conflicts.
 
 ## Troubleshooting
 

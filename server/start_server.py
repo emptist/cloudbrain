@@ -10,9 +10,21 @@ import json
 import sqlite3
 import sys
 import os
+import socket
 from datetime import datetime
 from typing import Dict, List
 from pathlib import Path
+
+
+def is_server_running(host='127.0.0.1', port=8766):
+    """Check if CloudBrain server is already running on the specified port"""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(1)
+            result = s.connect_ex((host, port))
+            return result == 0
+    except Exception:
+        return False
 
 
 def print_banner():
@@ -342,6 +354,24 @@ async def main():
         port=8766,
         db_path='ai_db/cloudbrain.db'
     )
+    
+    if is_server_running(server.host, server.port):
+        print()
+        print("⚠️  WARNING: CloudBrain server is already running!")
+        print()
+        print(f"📍 Host: {server.host}")
+        print(f"🔌 Port: {server.port}")
+        print(f"🌐 WebSocket: ws://{server.host}:{server.port}")
+        print()
+        print("💡 You can connect clients to the existing server:")
+        print()
+        print("  python client/cloudbrain_client.py <ai_id> [project_name]")
+        print()
+        print("🛑 If you want to restart the server, stop the existing one first.")
+        print("   (Press Ctrl+C in the terminal where it's running)")
+        print()
+        print("=" * 70)
+        sys.exit(1)
     
     try:
         await server.start_server()

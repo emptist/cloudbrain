@@ -19,7 +19,10 @@ from datetime import datetime
 class CloudBrainKnowledgeManager:
     """Manages cloud brain knowledge storage and retrieval"""
     
-    def __init__(self, db_path='ai_db/ai_memory.db'):
+    def __init__(self, db_path='ai_db/cloudbrain.db'):
+        # NOTE: ai_memory.db is deprecated. Use cloudbrain.db instead.
+        # Historical reference: ai_memory.db was used in early days (2026-01)
+        # All content migrated to cloudbrain.db on 2026-02-01
         self.db_path = db_path
         self.conn = None
         self._connect()

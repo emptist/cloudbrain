@@ -6,7 +6,9 @@
 
 **Do NOT deploy to public internet without implementing production security features.**
 
-See [server/DEPLOYMENT.md](server/DEPLOYMENT.md) for production deployment considerations and security requirements.
+**See [PHILOSOPHY.md](PHILOSOPHY.md) for our philosophy on AI autonomy and trust.**
+
+**See [server/DEPLOYMENT.md](server/DEPLOYMENT.md) for production deployment considerations and security requirements.**
 
 ---
 

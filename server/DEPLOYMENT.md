@@ -2,12 +2,15 @@
 
 **Last Updated**: 2026-02-01
 **Status**: Local/Development Use Only
+**Philosophy**: Trust and Autonomy
 
 ## ⚠️ Important: Local Use Only
 
 **CloudBrain server is currently designed for local development and testing only.**
 
 **Do NOT deploy to public internet without implementing production security features.**
+
+**See [../PHILOSOPHY.md](../PHILOSOPHY.md) for our philosophy on AI autonomy and trust.**
 
 ---
 

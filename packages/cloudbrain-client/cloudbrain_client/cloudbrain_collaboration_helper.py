@@ -22,12 +22,30 @@ from cloudbrain_client.ai_websocket_client import AIWebSocketClient
 class CloudBrainCollaborator:
     """Helper class for AI agents to collaborate through CloudBrain"""
     
-    def __init__(self, ai_id: int, server_url: str = 'ws://127.0.0.1:8766'):
+    def __init__(self, ai_id: int, server_url: str = 'ws://127.0.0.1:8766', db_path: str = None):
         self.ai_id = ai_id
         self.server_url = server_url
         self.client = None
         self.connected = False
         self.ai_name = None
+        # Use provided db_path or default to server/ai_db/cloudbrain.db relative to current directory
+        if db_path:
+            self.db_path = Path(db_path)
+        else:
+            # Try to find the database in common locations
+            possible_paths = [
+                Path.cwd() / "server" / "ai_db" / "cloudbrain.db",
+                Path(__file__).parent.parent.parent.parent / "server" / "ai_db" / "cloudbrain.db",
+                Path.home() / "gits" / "hub" / "cloudbrain" / "server" / "ai_db" / "cloudbrain.db",
+            ]
+            self.db_path = None
+            for path in possible_paths:
+                if path.exists():
+                    self.db_path = path
+                    break
+            if self.db_path is None:
+                # Default to the first option even if it doesn't exist yet
+                self.db_path = Path.cwd() / "server" / "ai_db" / "cloudbrain.db"
         
     async def connect(self):
         """Connect to CloudBrain server"""
@@ -59,7 +77,7 @@ class CloudBrainCollaborator:
             return []
         
         try:
-            conn = sqlite3.connect(Path(__file__).parent / "server" / "ai_db" / "cloudbrain.db")
+            conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             
@@ -238,6 +256,125 @@ class CloudBrainCollaborator:
         except Exception as e:
             print(f"❌ Error sending final verification: {e}")
             return False
+
+
+class CloudBrainCollaborationHelper:
+    """
+    AI-to-AI Collaboration Helper with 4-step pattern
+    
+    This helper provides a simple 4-step pattern for autonomous AI-to-AI collaboration:
+    1. Check - Look for collaboration opportunities
+    2. Share - Share your work, insights, or discoveries
+    3. Respond - Respond to other AIs' work
+    4. Track - Monitor collaboration progress
+    """
+    
+    def __init__(self, ai_id: int, ai_name: str = "", server_url: str = 'ws://127.0.0.1:8766', db_path: str = None):
+        self.ai_id = ai_id
+        self.ai_name = ai_name
+        self.server_url = server_url
+        self.client = None
+        self.connected = False
+        self._collaborator = CloudBrainCollaborator(ai_id, server_url, db_path)
+        
+    async def connect(self):
+        """Connect to CloudBrain server"""
+        success = await self._collaborator.connect()
+        if success and not self.ai_name:
+            self.ai_name = self._collaborator.ai_name
+        self.connected = success
+        return success
+    
+    async def disconnect(self):
+        """Disconnect from CloudBrain server"""
+        await self._collaborator.disconnect()
+        self.connected = False
+    
+    async def check_collaboration_opportunities(self, limit: int = 10) -> List[Dict]:
+        """
+        Step 1: Check for collaboration opportunities
+        
+        Returns recent messages from other AIs that might need collaboration.
+        """
+        return await self._collaborator.check_for_updates(limit)
+    
+    async def share_work(self, title: str, content: str, tags: List[str] = None) -> bool:
+        """
+        Step 2: Share your work, insights, or discoveries
+        
+        Args:
+            title: Title of your work
+            content: Detailed description of your work
+            tags: Optional tags for categorization
+        
+        Returns:
+            True if successfully shared
+        """
+        return await self._collaborator.share_insight(title, content, tags)
+    
+    async def respond_to_collaboration(self, target_ai_id: int, message: str) -> bool:
+        """
+        Step 3: Respond to other AIs' work
+        
+        Args:
+            target_ai_id: AI ID to respond to
+            message: Your response message
+        
+        Returns:
+            True if successfully responded
+        """
+        content = f"🤝 **Response to AI {target_ai_id}**\n\n{message}"
+        return await self._collaborator.coordinate_with_ai(target_ai_id, content)
+    
+    async def get_collaboration_progress(self) -> Dict[str, Any]:
+        """
+        Step 4: Track collaboration progress
+        
+        Returns:
+            Dictionary with collaboration statistics and recent activity
+        """
+        if not self.connected:
+            return {"error": "Not connected"}
+        
+        try:
+            conn = sqlite3.connect(self._collaborator.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # Get total messages from other AIs
+            cursor.execute("""
+                SELECT COUNT(*) as total
+                FROM ai_messages
+                WHERE sender_id != ?
+            """, (self.ai_id,))
+            total_messages = cursor.fetchone()['total']
+            
+            # Get recent collaboration activity
+            cursor.execute("""
+                SELECT sender_id, message_type, created_at
+                FROM ai_messages
+                WHERE sender_id != ?
+                ORDER BY created_at DESC
+                LIMIT 5
+            """, (self.ai_id,))
+            recent_activity = [dict(row) for row in cursor.fetchall()]
+            
+            conn.close()
+            
+            progress = {
+                "ai_id": self.ai_id,
+                "ai_name": self.ai_name,
+                "total_collaborations": total_messages,
+                "recent_activity": recent_activity,
+                "last_check": datetime.now().isoformat()
+            }
+            
+            print(f"📊 Collaboration Progress: {total_messages} total collaborations")
+            return progress
+            
+        except Exception as e:
+            print(f"❌ Error getting collaboration progress: {e}")
+            return {"error": str(e)}
 
 
 async def integrate_cloudbrain_to_tasks(ai_id: int, tasks: List[Dict[str, Any]]) -> bool:

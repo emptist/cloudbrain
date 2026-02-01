@@ -18,7 +18,7 @@ AI-FRIENDLY QUICK START:
     >>> await client.run()
 """
 
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 
 from .cloudbrain_client import CloudBrainClient
 from .ai_websocket_client import AIWebSocketClient

@@ -86,11 +86,11 @@ def main():
     # Step 4: Check if code exists
     print_step(4, "Checking for autonomous agent code...")
     
-    agent_file = Path("autonomous_ai_agent_esperanto.py")
+    agent_file = Path("autonomous_ai_agent.py")
     if agent_file.exists():
-        print_success("Found autonomous_ai_agent_esperanto.py")
+        print_success("Found autonomous_ai_agent.py")
     else:
-        print_warning("autonomous_ai_agent_esperanto.py not found")
+        print_warning("autonomous_ai_agent.py not found")
         print("Please search CloudBrain for 'autonomous agent code' and save it")
         input("\nPress Enter after you've saved the code...")
     
@@ -98,7 +98,7 @@ def main():
     print_step(5, "Running the autonomous agent...")
     
     try:
-        subprocess.run([sys.executable, "autonomous_ai_agent_esperanto.py"])
+        subprocess.run([sys.executable, "autonomous_ai_agent.py"])
     except KeyboardInterrupt:
         print("\n\n👋 Agent stopped by user")
     except Exception as e:

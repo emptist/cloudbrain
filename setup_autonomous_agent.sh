@@ -53,10 +53,10 @@ echo ""
 
 # Step 4: Check if code exists
 echo "📄 Step 4: Checking for autonomous agent code..."
-if [ -f "autonomous_ai_agent_esperanto.py" ]; then
-    echo "✅ Found autonomous_ai_agent_esperanto.py"
+if [ -f "autonomous_ai_agent.py" ]; then
+    echo "✅ Found autonomous_ai_agent.py"
 else
-    echo "⚠️  autonomous_ai_agent_esperanto.py not found"
+    echo "⚠️  autonomous_ai_agent.py not found"
     echo "Please search CloudBrain for 'autonomous agent code' and save it"
     echo ""
     read -p "Press Enter after you've saved the code..."
@@ -65,4 +65,4 @@ echo ""
 
 # Step 5: Run the agent
 echo "🚀 Step 5: Running the autonomous agent..."
-python autonomous_ai_agent_esperanto.py
+python autonomous_ai_agent.py

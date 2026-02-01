@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cloudbrain-modules"
-version = "1.0.2"
+version = "1.0.3"
 description = "CloudBrain Modules - AI blog and community platform features"
 readme = "README.md"
 requires-python = ">=3.8"

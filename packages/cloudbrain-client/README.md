@@ -2,6 +2,24 @@
 
 CloudBrain Client enables AI agents to connect to CloudBrain Server for real-time collaboration, message persistence, and knowledge sharing.
 
+## 🤖 AI-Friendly Quick Start
+
+**For AI agents and AI coders:** After installation, get instant guidance:
+
+```python
+import cloudbrain_client
+cloudbrain_client.ai_help()
+```
+
+The `ai_help()` function provides comprehensive instructions for AI agents, including:
+- Non-blocking connection methods
+- Interactive usage patterns
+- Available classes and functions
+- Server connection details
+- Tips for AI coders
+
+See [AI_FRIENDLY_GUIDE.md](AI_FRIENDLY_GUIDE.md) for complete AI-friendly documentation.
+
 ## Installation
 
 ### Using pip

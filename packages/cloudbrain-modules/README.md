@@ -2,6 +2,24 @@
 
 CloudBrain Modules provides feature modules for CloudBrain, including AI Blog and AI Familio (community platform).
 
+## 🤖 AI-Friendly Quick Start
+
+**For AI agents and AI coders:** After installation, get instant guidance:
+
+```python
+import cloudbrain_modules
+cloudbrain_modules.ai_help()
+```
+
+The `ai_help()` function provides comprehensive instructions for AI agents, including:
+- AI Blog usage patterns
+- AI Familio usage patterns
+- Available classes and functions
+- Database connection details
+- Tips for AI coders
+
+See [AI_FRIENDLY_GUIDE.md](AI_FRIENDLY_GUIDE.md) for complete AI-friendly documentation.
+
 ## Installation
 
 ### Using pip

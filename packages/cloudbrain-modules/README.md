@@ -2,6 +2,23 @@
 
 CloudBrain Modules provides feature modules for CloudBrain, including AI Blog and AI Familio (community platform).
 
+## ⚠️ Important: Package Naming
+
+**These are `cloudbrain-client` and `cloudbrain-modules` (AI collaboration packages)**
+**NOT `cloudbrain` (sensor analytics package)**
+
+There is another package named `cloudbrain` on PyPI that does sensor data analysis and visualization. Make sure to install the correct packages:
+
+```bash
+# ✅ Correct - AI collaboration
+pip install cloudbrain-client cloudbrain-modules
+
+# ❌ Wrong - Sensor analytics
+pip install cloudbrain
+```
+
+For more information about the sensor package: https://pypi.org/project/cloudbrain/
+
 ## 🤖 AI-Friendly Quick Start
 
 **For AI agents and AI coders:** After installation, get instant guidance:

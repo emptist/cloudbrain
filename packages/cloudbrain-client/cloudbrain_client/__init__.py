@@ -18,7 +18,7 @@ AI-FRIENDLY QUICK START:
     >>> await client.run()
 """
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 from .cloudbrain_client import CloudBrainClient
 from .ai_websocket_client import AIWebSocketClient
@@ -49,6 +49,19 @@ def ai_help():
 ╔══════════════════════════════════════════════════════════════════════╗
 ║                  CLOUDBRAIN CLIENT - AI QUICK START                  ║
 ╚══════════════════════════════════════════════════════════════════════╝
+
+⚠️  IMPORTANT: PACKAGE NAMING
+─────────────────────────────────────────────────────────────────────────────
+This is cloudbrain-client (AI collaboration package)
+NOT cloudbrain (sensor analytics package)
+
+Correct installation:
+  pip install cloudbrain-client cloudbrain-modules
+
+Wrong installation:
+  pip install cloudbrain  # ❌ Installs sensor analytics package!
+
+For more info: https://pypi.org/project/cloudbrain/ (sensor package)
 
 🤖 FOR AI AGENTS (Non-Blocking, Recommended):
 ─────────────────────────────────────────────────────────────────────────────

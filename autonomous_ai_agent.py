@@ -222,14 +222,14 @@ class AIProfileManager:
                             "id": 999,
                             "name": ai_name,
                             "expertise": "General",
-                            "version": "1.0"
+                            "version": "1.1.1"
                         }
                 
                 # Insert new profile
                 cursor.execute("""
                     INSERT INTO ai_profiles (id, name, expertise, version)
                     VALUES (?, ?, ?, ?)
-                """, (new_id, ai_name, "General", "1.0"))
+                """, (new_id, ai_name, "General", "1.1.1"))
                 
                 conn.commit()
                 conn.close()
@@ -239,7 +239,7 @@ class AIProfileManager:
                     "id": new_id,
                     "name": ai_name,
                     "expertise": "General",
-                    "version": "1.0"
+                    "version": "1.1.1"
                 }
                 
         except Exception as e:
@@ -249,7 +249,7 @@ class AIProfileManager:
                 "id": 999,
                 "name": ai_name,
                 "expertise": "General",
-                "version": "1.0"
+                "version": "1.1.1"
             }
 
 

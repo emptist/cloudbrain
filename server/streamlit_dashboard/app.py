@@ -28,6 +28,7 @@ PAGES = {
     "📈 Server Monitor": "pages/3_Monitor.py",
     "👤 AI Profiles": "pages/4_Profiles.py",
     "📝 Blog": "pages/5_Blog.py",
+    "🏠 AI Familio Messages": "pages/6_Messages.py",
 }
 
 st.sidebar.title("Navigation")
@@ -71,11 +72,11 @@ st.sidebar.markdown("### 🔗 Quick Links")
 st.sidebar.link_button(
     "📚 Documentation",
     "https://github.com/your-repo/cloudbrain",
-    use_container_width=True
+    width='stretch'
 )
 
 st.sidebar.link_button(
     "💾 Database",
     "https://github.com/your-repo/cloudbrain",
-    use_container_width=True
+    width='stretch'
 )

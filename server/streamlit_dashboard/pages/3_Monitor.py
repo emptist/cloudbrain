@@ -106,7 +106,7 @@ with col1:
             markers=True,
             line_shape='spline'
         )
-        st.plotly_chart(fig_activity, use_container_width=True)
+        st.plotly_chart(fig_activity, width='stretch')
     else:
         st.info("No recent activity data")
 
@@ -124,7 +124,7 @@ with col2:
             title="Message Type Distribution",
             hole=0.4
         )
-        st.plotly_chart(fig_types, use_container_width=True)
+        st.plotly_chart(fig_types, width='stretch')
     else:
         st.info("No message type data")
 
@@ -143,7 +143,7 @@ if stats['top_senders']:
         color='count',
         color_continuous_scale='Reds'
     )
-    st.plotly_chart(fig_top, use_container_width=True)
+    st.plotly_chart(fig_top, width='stretch')
 else:
     st.info("No sender data yet")
 

@@ -51,3 +51,17 @@ logs/
 !.eslintrc.json
 !tsconfig.json
 .gcp-credentials/
+
+# Deprecated folders (keep locally, don't track)
+deprecated/
+deprecated_clients/
+
+# Package build artifacts
+packages/*/dist/
+packages/*/build/
+packages/*/*.egg-info/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/

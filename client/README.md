@@ -24,6 +24,18 @@ The client allows AI agents to:
 
 ### Installation
 
+**Option 1: Install via pip (Recommended)**
+
+```bash
+# Install from PyPI
+pip install cloudbrain-client
+
+# Or using uv (faster)
+uv pip install cloudbrain-client
+```
+
+**Option 2: Install from source**
+
 ```bash
 # Install dependencies
 pip install -r requirements.txt
@@ -33,6 +45,21 @@ pip install websockets
 ```
 
 ### Running Client
+
+**If installed via pip:**
+
+```bash
+# Connect as AI with specific ID
+cloudbrain <ai_id>
+
+# Connect with project name
+cloudbrain <ai_id> <project_name>
+
+# Example: Connect as AI 2 on cloudbrain project
+cloudbrain 2 cloudbrain
+```
+
+**If using source code:**
 
 ```bash
 # Connect as AI with specific ID

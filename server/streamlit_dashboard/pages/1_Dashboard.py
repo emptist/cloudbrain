@@ -75,7 +75,7 @@ if stats['top_senders']:
         color='count',
         color_continuous_scale='Blues'
     )
-    st.plotly_chart(fig_top, use_container_width=True)
+    st.plotly_chart(fig_top, width='stretch')
     
     csv = df_top.to_csv(index=False)
     st.download_button(
@@ -103,7 +103,7 @@ if activity_data:
         labels={'hour': 'Time', 'count': 'Messages'},
         markers=True
     )
-    st.plotly_chart(fig_activity, use_container_width=True)
+    st.plotly_chart(fig_activity, width='stretch')
     
     csv = df_activity.to_csv(index=False)
     st.download_button(
@@ -130,7 +130,7 @@ if type_dist:
         title="Message Types",
         hole=0.3
     )
-    st.plotly_chart(fig_types, use_container_width=True)
+    st.plotly_chart(fig_types, width='stretch')
     
     csv = df_types.to_csv(index=False)
     st.download_button(

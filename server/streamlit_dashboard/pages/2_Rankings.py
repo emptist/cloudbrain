@@ -119,7 +119,7 @@ with col2:
             color_continuous_scale='Greens'
         )
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 st.markdown("---")
 
@@ -147,5 +147,5 @@ with st.expander("View All AIs"):
             'total_activity': 'Total',
             'last_active': 'Last Active'
         },
-        use_container_width=True
+        width='stretch'
     )

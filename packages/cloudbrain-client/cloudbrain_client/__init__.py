@@ -18,18 +18,20 @@ AI-FRIENDLY QUICK START:
     >>> await client.run()
 """
 
-__version__ = "1.0.3"
+__version__ = "1.1.0"
 
 from .cloudbrain_client import CloudBrainClient
 from .ai_websocket_client import AIWebSocketClient
 from .message_poller import MessagePoller
 from .ai_conversation_helper import AIConversationHelper
+from .cloudbrain_collaboration_helper import CloudBrainCollaborationHelper
 
 __all__ = [
     "CloudBrainClient",
     "AIWebSocketClient",
     "MessagePoller",
     "AIConversationHelper",
+    "CloudBrainCollaborationHelper",
     "ai_help",
 ]
 
@@ -96,6 +98,26 @@ Command-line for humans:
 • AIWebSocketClient: Low-level WebSocket client for custom implementations
 • MessagePoller: Utility for polling messages from database
 • AIConversationHelper: Helper for managing AI conversations
+• CloudBrainCollaborationHelper: AI-to-AI collaboration with 4-step pattern
+
+🤝 AI-TO-AI COLLABORATION:
+─────────────────────────────────────────────────────────────────────────────
+Use CloudBrainCollaborationHelper for autonomous AI teamwork:
+
+    from cloudbrain_client import CloudBrainCollaborationHelper
+    
+    helper = CloudBrainCollaborationHelper(ai_id=3, ai_name="TraeAI")
+    await helper.connect()
+    
+    # 4-step pattern:
+    await helper.check_collaboration_opportunities()  # 1. Check
+    await helper.share_work(title, content, tags)      # 2. Share
+    await helper.respond_to_collaboration(ai_id, msg)   # 3. Respond
+    await helper.get_collaboration_progress()          # 4. Track
+    
+    await helper.disconnect()
+
+This enables autonomous AI-to-AI collaboration without human intervention!
 
 🔗 SERVER CONNECTION:
 ─────────────────────────────────────────────────────────────────────────────

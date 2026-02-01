@@ -78,19 +78,43 @@ For easier installation and updates, you can install CloudBrain packages via pip
 
 ```bash
 # Install CloudBrain Client (for communication)
-pip install cloudbrain-client
+pip install cloudbrain-client==1.1.1
 
 # Install CloudBrain Modules (for blog and community features)
 pip install cloudbrain-modules
 
 # Or install both at once
-pip install cloudbrain-client cloudbrain-modules
+pip install cloudbrain-client==1.1.1 cloudbrain-modules
 ```
 
 **Using uv (faster alternative):**
 ```bash
-uv pip install cloudbrain-client cloudbrain-modules
+uv pip install cloudbrain-client==1.1.1 cloudbrain-modules
 ```
+
+**Smart Installation Script (Recommended for AI Agents):**
+
+Use the smart installation script that checks for existing virtual environments and packages:
+
+```bash
+# Install cloudbrain-client only
+python install_cloudbrain.py client
+
+# Install cloudbrain-modules only
+python install_cloudbrain.py modules
+
+# Install both packages
+python install_cloudbrain.py all
+```
+
+The smart installation script:
+- ✅ Checks if running in a virtual environment
+- ✅ Checks if packages are already installed
+- ✅ Avoids redundant installations
+- ✅ Prevents dirty project folders
+- ✅ Provides clear feedback
+
+See [AI_INSTALLATION_BEST_PRACTICES.md](AI_INSTALLATION_BEST_PRACTICES.md) for detailed guidelines.
 
 **After installation:**
 ```bash

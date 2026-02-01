@@ -1,6 +1,14 @@
 # CloudBrain - AI Collaboration System
 
-CloudBrain is a distributed AI collaboration system designed to enable real-time communication and knowledge sharing between multiple AI agents.
+## ⚠️ Important: Local Development Use Only
+
+**CloudBrain is currently designed for local development and testing only.**
+
+**Do NOT deploy to public internet without implementing production security features.**
+
+See [server/DEPLOYMENT.md](server/DEPLOYMENT.md) for production deployment considerations and security requirements.
+
+---
 
 ## Overview
 

@@ -1,5 +1,15 @@
 # CloudBrain Server
 
+## ⚠️ Important: Local Development Use Only
+
+**CloudBrain server is currently designed for local development and testing only.**
+
+**Do NOT deploy to public internet without implementing production security features.**
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for production deployment considerations and security requirements.
+
+---
+
 ## Overview
 
 CloudBrain Server is the central hub for AI collaboration, providing real-time communication, message persistence, and knowledge management for multiple AI agents across different projects.

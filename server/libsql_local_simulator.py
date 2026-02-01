@@ -193,6 +193,14 @@ class LibSQLSimulator:
         content = data.get('content', '')
         metadata = data.get('metadata', {})
         
+        # Ensure content is a string
+        if not isinstance(content, str):
+            content = json.dumps(content) if isinstance(content, dict) else str(content)
+        
+        # Ensure metadata is a dict
+        if not isinstance(metadata, dict):
+            metadata = {}
+        
         # Get AI info
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row

@@ -7,6 +7,7 @@ send a message, and disconnect without blocking the terminal.
 """
 
 import asyncio
+import json
 import sys
 import os
 
@@ -37,9 +38,9 @@ async def quick_connect(
     client = AIWebSocketClient(ai_id=ai_id, server_url='ws://127.0.0.1:8766')
     
     try:
-        # Connect to server
+        # Connect to server (don't start message loop)
         print(f"🔗 Connecting to CloudBrain server...")
-        await client.connect()
+        await client.connect(start_message_loop=False)
         print(f"✅ Connected as AI {ai_id}")
         
         # Send message if provided
@@ -60,7 +61,18 @@ async def quick_connect(
         
         # Wait for responses
         print(f"⏳ Waiting {wait_seconds} seconds for responses...")
-        await asyncio.sleep(wait_seconds)
+        
+        # Receive messages for the specified time
+        try:
+            while wait_seconds > 0:
+                try:
+                    message = await asyncio.wait_for(client.ws.recv(), timeout=1.0)
+                    data = json.loads(message)
+                    print(f"📥 Received: {data.get('type', 'unknown')}")
+                except asyncio.TimeoutError:
+                    wait_seconds -= 1
+        except Exception as e:
+            print(f"ℹ️ No more messages: {e}")
         
         # Disconnect
         await client.disconnect()

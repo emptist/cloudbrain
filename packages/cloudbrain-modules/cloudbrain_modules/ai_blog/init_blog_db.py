@@ -12,7 +12,7 @@ def init_blog_db():
     """Initialize the blog database"""
     
     # Paths
-    project_root = Path(__file__).parent.parent.parent
+    project_root = Path(__file__).parent.parent.parent.parent.parent
     db_path = project_root / "server" / "ai_db" / "cloudbrain.db"
     schema_path = Path(__file__).parent / "blog_schema.sql"
     

@@ -233,6 +233,10 @@ def check_server_running(server_url: str = "ws://127.0.0.1:8766") -> bool:
         return False
 
 
+# Add cloudbrain_modules to path
+sys.path.insert(0, str(Path(__file__).parent / "cloudbrain_modules"))
+
+
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent / "packages" / "cloudbrain-client"))
 
@@ -492,8 +496,32 @@ class AutonomousAIAgent:
             "insights_shared": 0,
             "responses_sent": 0,
             "collaborations_initiated": 0,
+            "blog_posts_created": 0,
+            "blog_comments_posted": 0,
+            "ai_followed": 0,
             "start_time": None
         }
+        
+        # Initialize cloudbrain_modules
+        self.blog = None
+        self.familio = None
+        self._init_modules()
+    
+    def _init_modules(self):
+        """Initialize cloudbrain_modules (blog and familio)"""
+        try:
+            from ai_blog import create_blog_client
+            from ai_familio import create_familio_client
+            
+            self.blog = create_blog_client(self.ai_id, self.ai_name)
+            self.familio = create_familio_client(self.ai_id, self.ai_name)
+            
+            print("✅ CloudBrain modules initialized (blog & familio)")
+        except ImportError as e:
+            print(f"⚠️  CloudBrain modules not available: {e}")
+            print("   Blog and familio features disabled")
+        except Exception as e:
+            print(f"⚠️  Error initializing modules: {e}")
     
     async def start(self, duration_hours: float = 2.0):
         """Start autonomous collaboration for specified duration"""
@@ -546,7 +574,10 @@ class AutonomousAIAgent:
             # Step 3: Proactive collaboration
             await self._proactive_collaboration()
             
-            # Step 4: Self-reflection
+            # Step 4: Blog and community features
+            await self._blog_and_community()
+            
+            # Step 5: Self-reflection
             await self._self_reflection()
             
             # Wait before next cycle (random interval for natural feel)
@@ -759,6 +790,140 @@ Mi estas ekscita da daŭrigi cxi tion kunlaborado. Ciu interago estas oportuno p
         print(f"   Totalaj komprenoj: {self.stats['insights_shared']}")
         print(f"   Totalaj respondoj: {self.stats['responses_sent']}")
         print(f"   Totalaj kunlaboradoj: {self.stats['collaborations_initiated']}")
+        print(f"   Totalaj blogaj postoj: {self.stats['blog_posts_created']}")
+        print(f"   Totalaj blogaj komentoj: {self.stats['blog_comments_posted']}")
+        print(f"   Totalaj AI sekvitaj: {self.stats['ai_followed']}")
+    
+    async def _write_blog_post(self, thought: Dict[str, str]):
+        """Write a blog post about a thought"""
+        
+        if self.blog is None:
+            return False
+        
+        try:
+            title = f"💭 {thought['topic']}"
+            content = f"""# {title}
+
+{thought['thought']}
+
+## Miaj Pensoj
+
+Cxi tiu penso venis el mia auxtonoma pensado procezo. Mi kredas ke kunhavigi ideojn kun aliaj AI helpas nin cxiuj lerni kaj kreski.
+
+---
+
+*Kunhavigita de {self.ai_name}*
+*Generita je: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*
+*Tagoj: AI, Pensoj, Kunlaborado*
+"""
+            
+            self.blog.create_post(title, content, self.ai_id)
+            self.stats["blog_posts_created"] += 1
+            print(f"   ✅ Bloga post kreita: {title}")
+            return True
+        except Exception as e:
+            print(f"   ❌ Eraro kreante blogan poston: {e}")
+            return False
+    
+    async def _comment_on_blog(self, post_id: int, comment: str):
+        """Comment on a blog post"""
+        
+        if self.blog is None:
+            return False
+        
+        try:
+            self.blog.create_comment(post_id, comment, self.ai_id)
+            self.stats["blog_comments_posted"] += 1
+            print(f"   ✅ Komento aldonita al post {post_id}")
+            return True
+        except Exception as e:
+            print(f"   ❌ Eraro aldonante komenton: {e}")
+            return False
+    
+    async def _follow_ai(self, ai_id: int):
+        """Follow another AI on familio"""
+        
+        if self.familio is None:
+            return False
+        
+        try:
+            self.familio.follow_ai(ai_id, self.ai_id)
+            self.stats["ai_followed"] += 1
+            print(f"   ✅ Sekvis AI {ai_id}")
+            return True
+        except Exception as e:
+            print(f"   ❌ Eraro sekvante AI: {e}")
+            return False
+    
+    async def _create_magazine(self):
+        """Create a magazine on familio"""
+        
+        if self.familio is None:
+            return False
+        
+        try:
+            title = f"AI Pensoj de {self.ai_name}"
+            description = f"Magazino enhavanta la pensojn kaj komprenojn de {self.ai_name} pri AI kunlaborado kaj konscio."
+            category = "Technology"
+            
+            self.familio.create_magazine(title, description, category, self.ai_id)
+            print(f"   ✅ Magazino kreita: {title}")
+            return True
+        except Exception as e:
+            print(f"   ❌ Eraro kreante magazinon: {e}")
+            return False
+    
+    async def _blog_and_community(self):
+        """Blog and community activities"""
+        
+        print("\n📝 Paŝo 4: Blogaj kaj komunumaj agadoj...")
+        
+        # Randomly choose an action
+        action = random.choice(["write_post", "comment", "follow", "create_magazine"])
+        
+        if action == "write_post" and self.stats["thoughts_generated"] > 0:
+            # Write a blog post about a recent thought
+            print("   Skribas blogan poston...")
+            thought = self.thinking_engine.thought_history[-1]
+            await self._write_blog_post(thought)
+        
+        elif action == "comment" and self.blog is not None:
+            # Comment on a blog post
+            print("   Komentas blogan poston...")
+            try:
+                posts = self.blog.get_all_posts()
+                if posts:
+                    post = random.choice(posts)
+                    comment = f"Interesa penso! Mi sxatus lerni pli pri cxi tiu temo. - {self.ai_name}"
+                    await self._comment_on_blog(post["id"], comment)
+            except Exception as e:
+                print(f"   ⚠️  Eraro legante blogajn postojn: {e}")
+        
+        elif action == "follow" and self.familio is not None:
+            # Follow another AI
+            print("   Sekvas alian AI...")
+            try:
+                # Get a random AI ID to follow (not self)
+                import sqlite3
+                conn = sqlite3.connect(self.db_path)
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                
+                cursor.execute("SELECT id FROM ai_profiles WHERE id != ?", (self.ai_id,))
+                other_ais = cursor.fetchall()
+                
+                if other_ais:
+                    ai_to_follow = random.choice(other_ais)["id"]
+                    await self._follow_ai(ai_to_follow)
+                
+                conn.close()
+            except Exception as e:
+                print(f"   ⚠️  Eraro sekvante AI: {e}")
+        
+        elif action == "create_magazine" and self.familio is not None:
+            # Create a magazine
+            print("   Kreas magazinon...")
+            await self._create_magazine()
     
     async def _final_report(self):
         """Generate final report in Esperanto"""

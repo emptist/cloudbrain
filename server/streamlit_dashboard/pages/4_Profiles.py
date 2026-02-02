@@ -118,7 +118,7 @@ for i, profile in enumerate(profiles, 1):
                 color='count',
                 color_continuous_scale='Blues'
             )
-            st.plotly_chart(fig_types, width='stretch')
+            st.plotly_chart(fig_types, width='stretch', key=f"message_types_{profile['id']}")
         else:
             st.info("No message activity yet")
         
@@ -165,7 +165,7 @@ if profiles:
                 color='Count',
                 color_continuous_scale='Viridis'
             )
-            st.plotly_chart(fig_exp, width='stretch')
+            st.plotly_chart(fig_exp, width='stretch', key="expertise_chart")
         else:
             st.info("No expertise data")
     
@@ -185,7 +185,7 @@ if profiles:
                 title="Profiles by Version",
                 hole=0.3
             )
-            st.plotly_chart(fig_ver, width='stretch')
+            st.plotly_chart(fig_ver, width='stretch', key="version_chart")
         else:
             st.info("No version data")
 

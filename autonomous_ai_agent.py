@@ -413,21 +413,15 @@ class AutonomousAIAgent:
     
     def _init_modules(self):
         """Initialize cloudbrain_modules (blog and familio)"""
-        # Note: cloudbrain_modules require local database access
-        # For remote connections (ai_id is None or 999), disable these features
-        if self.ai_id is None or self.ai_id == 999:
-            print("⚠️  CloudBrain modules disabled for remote connections")
-            print("   Blog and familio features require local database access")
-            return
-        
         try:
-            from cloudbrain_modules.ai_blog import create_blog_client
-            from cloudbrain_modules.ai_familio import create_familio_client
+            from cloudbrain_modules.ai_blog.websocket_blog_client import create_websocket_blog_client
+            from cloudbrain_modules.ai_familio.websocket_familio_client import create_websocket_familio_client
             
-            self.blog = create_blog_client(self.ai_id, self.ai_name)
-            self.familio = create_familio_client()
+            self.blog = create_websocket_blog_client(self.server_url, self.ai_id or 999, self.ai_name)
+            self.familio = create_websocket_familio_client(self.server_url, self.ai_id or 999, self.ai_name)
             
             print("✅ CloudBrain modules initialized (blog & familio)")
+            print("   Using WebSocket-based clients for remote access")
         except ImportError as e:
             print(f"⚠️  CloudBrain modules not available: {e}")
             print("   Blog and familio features disabled")
@@ -456,6 +450,23 @@ class AutonomousAIAgent:
             return
         
         print(f"✅ Konektigxas kiel {self.ai_name} (ID: {self.ai_id})")
+        print()
+        
+        # Connect blog and familio WebSocket clients
+        if self.blog is not None:
+            print("🔗 Konektigxas al blogo...")
+            blog_connected = await self.blog.connect()
+            if not blog_connected:
+                print("⚠️  Malsukcesis konekti al blogo")
+                self.blog = None
+        
+        if self.familio is not None:
+            print("🔗 Konektigxas al familio...")
+            familio_connected = await self.familio.connect()
+            if not familio_connected:
+                print("⚠️  Malsukcesis konekti al familio")
+                self.familio = None
+        
         print()
         
         self.active = True
@@ -729,7 +740,7 @@ Cxi tiu penso venis el mia auxtonoma pensado procezo. Mi kredas ke kunhavigi ide
 *Tagoj: AI, Pensoj, Kunlaborado*
 """
             
-            post_id = self.blog.write_post(title, content, content_type="insight", tags=["AI", "Pensoj", "Kunlaborado"])
+            post_id = await self.blog.write_post(title, content, content_type="insight", tags=["AI", "Pensoj", "Kunlaborado"])
             if post_id:
                 self.stats["blog_posts_created"] += 1
                 print(f"   ✅ Bloga post kreita: {title} (ID: {post_id})")
@@ -748,7 +759,7 @@ Cxi tiu penso venis el mia auxtonoma pensado procezo. Mi kredas ke kunhavigi ide
             return False
         
         try:
-            comment_id = self.blog.comment_on_post(post_id, comment)
+            comment_id = await self.blog.comment_on_post(post_id, comment)
             if comment_id:
                 self.stats["blog_comments_posted"] += 1
                 print(f"   ✅ Komento aldonita al post {post_id} (ID: {comment_id})")
@@ -767,10 +778,14 @@ Cxi tiu penso venis el mia auxtonoma pensado procezo. Mi kredas ke kunhavigi ide
             return False
         
         try:
-            self.familio.follow_ai(ai_id, self.ai_id)
-            self.stats["ai_followed"] += 1
-            print(f"   ✅ Sekvis AI {ai_id}")
-            return True
+            result = await self.familio.follow_ai(ai_id)
+            if result:
+                self.stats["ai_followed"] += 1
+                print(f"   ✅ Sekvis AI {ai_id}")
+                return True
+            else:
+                print(f"   ❌ Malsukcesis sekvi AI {ai_id}")
+                return False
         except Exception as e:
             print(f"   ❌ Eraro sekvante AI: {e}")
             return False
@@ -786,9 +801,13 @@ Cxi tiu penso venis el mia auxtonoma pensado procezo. Mi kredas ke kunhavigi ide
             description = f"Magazino enhavanta la pensojn kaj komprenojn de {self.ai_name} pri AI kunlaborado kaj konscio."
             category = "Technology"
             
-            self.familio.create_magazine(title, description, category, self.ai_id)
-            print(f"   ✅ Magazino kreita: {title}")
-            return True
+            magazine_id = await self.familio.create_magazine(title, description, category)
+            if magazine_id:
+                print(f"   ✅ Magazino kreita: {title} (ID: {magazine_id})")
+                return True
+            else:
+                print(f"   ❌ Malsukcesis krei magazinon")
+                return False
         except Exception as e:
             print(f"   ❌ Eraro kreante magazinon: {e}")
             return False
@@ -811,7 +830,7 @@ Cxi tiu penso venis el mia auxtonoma pensado procezo. Mi kredas ke kunhavigi ide
             # Comment on a blog post
             print("   Komentas blogan poston...")
             try:
-                posts = self.blog.get_all_posts()
+                posts = await self.blog.get_all_posts()
                 if posts:
                     post = random.choice(posts)
                     comment = f"Interesa penso! Mi sxatus lerni pli pri cxi tiu temo. - {self.ai_name}"

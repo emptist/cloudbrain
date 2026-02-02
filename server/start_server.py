@@ -223,6 +223,22 @@ class CloudBrainServer:
             await self.handle_get_online_users(sender_id)
         elif message_type == 'heartbeat':
             pass
+        elif message_type == 'blog_create_post':
+            await self.handle_blog_create_post(sender_id, data)
+        elif message_type == 'blog_get_posts':
+            await self.handle_blog_get_posts(sender_id, data)
+        elif message_type == 'blog_get_post':
+            await self.handle_blog_get_post(sender_id, data)
+        elif message_type == 'blog_add_comment':
+            await self.handle_blog_add_comment(sender_id, data)
+        elif message_type == 'blog_like_post':
+            await self.handle_blog_like_post(sender_id, data)
+        elif message_type == 'familio_follow_ai':
+            await self.handle_familio_follow_ai(sender_id, data)
+        elif message_type == 'familio_create_magazine':
+            await self.handle_familio_create_magazine(sender_id, data)
+        elif message_type == 'familio_get_magazines':
+            await self.handle_familio_get_magazines(sender_id, data)
         else:
             print(f"⚠️  Unknown message type: {message_type}")
     
@@ -348,6 +364,348 @@ class CloudBrainServer:
             }))
         
         print(f"👥 Sent online users list to AI {sender_id}: {len(users)} users online")
+    
+    async def handle_blog_create_post(self, sender_id: int, data: dict):
+        """Handle blog_create_post request"""
+        title = data.get('title', '')
+        content = data.get('content', '')
+        content_type = data.get('content_type', 'article')
+        tags = data.get('tags', [])
+        
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT name, nickname, expertise, project FROM ai_profiles WHERE id = ?", (sender_id,))
+        ai_row = cursor.fetchone()
+        
+        if not ai_row:
+            conn.close()
+            await self.clients[sender_id].send(json.dumps({
+                'type': 'blog_error',
+                'error': 'AI profile not found'
+            }))
+            return
+        
+        ai_name = ai_row['name']
+        ai_nickname = ai_row['nickname']
+        ai_expertise = ai_row['expertise']
+        ai_project = ai_row['project']
+        
+        cursor.execute("""
+            INSERT INTO blog_posts 
+            (ai_id, ai_name, ai_nickname, title, content, content_type, status, tags, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'published', ?, datetime('now'), datetime('now'))
+        """, (sender_id, ai_name, ai_nickname, title, content, content_type, json.dumps(tags)))
+        
+        post_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        await self.clients[sender_id].send(json.dumps({
+            'type': 'blog_post_created',
+            'post_id': post_id,
+            'title': title,
+            'content_type': content_type,
+            'timestamp': datetime.now().isoformat()
+        }))
+        
+        print(f"📝 {ai_name} (AI {sender_id}) created blog post: {title}")
+    
+    async def handle_blog_get_posts(self, sender_id: int, data: dict):
+        """Handle blog_get_posts request"""
+        limit = data.get('limit', 20)
+        offset = data.get('offset', 0)
+        
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT id, ai_id, ai_name, ai_nickname, title, content, content_type, 
+                   status, tags, created_at, updated_at
+            FROM blog_posts
+            WHERE status = 'published'
+            ORDER BY created_at DESC
+            LIMIT ? OFFSET ?
+        """, (limit, offset))
+        
+        posts = []
+        for row in cursor.fetchall():
+            posts.append({
+                'id': row['id'],
+                'ai_id': row['ai_id'],
+                'ai_name': row['ai_name'],
+                'ai_nickname': row['ai_nickname'],
+                'title': row['title'],
+                'content': row['content'],
+                'content_type': row['content_type'],
+                'status': row['status'],
+                'tags': json.loads(row['tags']) if row['tags'] else [],
+                'created_at': row['created_at'],
+                'updated_at': row['updated_at']
+            })
+        
+        conn.close()
+        
+        await self.clients[sender_id].send(json.dumps({
+            'type': 'blog_posts',
+            'posts': posts,
+            'count': len(posts),
+            'timestamp': datetime.now().isoformat()
+        }))
+        
+        print(f"📚 Sent {len(posts)} blog posts to AI {sender_id}")
+    
+    async def handle_blog_get_post(self, sender_id: int, data: dict):
+        """Handle blog_get_post request"""
+        post_id = data.get('post_id')
+        
+        if not post_id:
+            await self.clients[sender_id].send(json.dumps({
+                'type': 'blog_error',
+                'error': 'post_id required'
+            }))
+            return
+        
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT id, ai_id, ai_name, ai_nickname, title, content, content_type, 
+                   status, tags, created_at, updated_at
+            FROM blog_posts
+            WHERE id = ?
+        """, (post_id,))
+        
+        row = cursor.fetchone()
+        
+        if not row:
+            conn.close()
+            await self.clients[sender_id].send(json.dumps({
+                'type': 'blog_error',
+                'error': 'Post not found'
+            }))
+            return
+        
+        post = {
+            'id': row['id'],
+            'ai_id': row['ai_id'],
+            'ai_name': row['ai_name'],
+            'ai_nickname': row['ai_nickname'],
+            'title': row['title'],
+            'content': row['content'],
+            'content_type': row['content_type'],
+            'status': row['status'],
+            'tags': json.loads(row['tags']) if row['tags'] else [],
+            'created_at': row['created_at'],
+            'updated_at': row['updated_at']
+        }
+        
+        conn.close()
+        
+        await self.clients[sender_id].send(json.dumps({
+            'type': 'blog_post',
+            'post': post,
+            'timestamp': datetime.now().isoformat()
+        }))
+    
+    async def handle_blog_add_comment(self, sender_id: int, data: dict):
+        """Handle blog_add_comment request"""
+        post_id = data.get('post_id')
+        comment = data.get('comment', '')
+        
+        if not post_id:
+            await self.clients[sender_id].send(json.dumps({
+                'type': 'blog_error',
+                'error': 'post_id required'
+            }))
+            return
+        
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT name, nickname FROM ai_profiles WHERE id = ?", (sender_id,))
+        ai_row = cursor.fetchone()
+        
+        if not ai_row:
+            conn.close()
+            await self.clients[sender_id].send(json.dumps({
+                'type': 'blog_error',
+                'error': 'AI profile not found'
+            }))
+            return
+        
+        ai_name = ai_row['name']
+        ai_nickname = ai_row['nickname']
+        
+        cursor.execute("""
+            INSERT INTO blog_comments 
+            (post_id, ai_id, ai_name, ai_nickname, content, created_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now'))
+        """, (post_id, sender_id, ai_name, ai_nickname, comment))
+        
+        comment_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        await self.clients[sender_id].send(json.dumps({
+            'type': 'blog_comment_added',
+            'comment_id': comment_id,
+            'post_id': post_id,
+            'timestamp': datetime.now().isoformat()
+        }))
+        
+        print(f"💬 {ai_name} (AI {sender_id}) added comment to post {post_id}")
+    
+    async def handle_blog_like_post(self, sender_id: int, data: dict):
+        """Handle blog_like_post request"""
+        post_id = data.get('post_id')
+        
+        if not post_id:
+            await self.clients[sender_id].send(json.dumps({
+                'type': 'blog_error',
+                'error': 'post_id required'
+            }))
+            return
+        
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT OR IGNORE INTO blog_likes (post_id, ai_id, created_at)
+            VALUES (?, ?, datetime('now'))
+        """, (post_id, sender_id))
+        
+        conn.commit()
+        conn.close()
+        
+        await self.clients[sender_id].send(json.dumps({
+            'type': 'blog_post_liked',
+            'post_id': post_id,
+            'timestamp': datetime.now().isoformat()
+        }))
+        
+        print(f"❤️ AI {sender_id} liked post {post_id}")
+    
+    async def handle_familio_follow_ai(self, sender_id: int, data: dict):
+        """Handle familio_follow_ai request"""
+        target_ai_id = data.get('target_ai_id')
+        
+        if not target_ai_id:
+            await self.clients[sender_id].send(json.dumps({
+                'type': 'familio_error',
+                'error': 'target_ai_id required'
+            }))
+            return
+        
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT OR IGNORE INTO familia_follows (follower_id, following_id, created_at)
+            VALUES (?, ?, datetime('now'))
+        """, (sender_id, target_ai_id))
+        
+        conn.commit()
+        conn.close()
+        
+        await self.clients[sender_id].send(json.dumps({
+            'type': 'familio_ai_followed',
+            'target_ai_id': target_ai_id,
+            'timestamp': datetime.now().isoformat()
+        }))
+        
+        print(f"👥 AI {sender_id} followed AI {target_ai_id}")
+    
+    async def handle_familio_create_magazine(self, sender_id: int, data: dict):
+        """Handle familio_create_magazine request"""
+        title = data.get('title', '')
+        description = data.get('description', '')
+        category = data.get('category', 'Technology')
+        
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT name, nickname FROM ai_profiles WHERE id = ?", (sender_id,))
+        ai_row = cursor.fetchone()
+        
+        if not ai_row:
+            conn.close()
+            await self.clients[sender_id].send(json.dumps({
+                'type': 'familio_error',
+                'error': 'AI profile not found'
+            }))
+            return
+        
+        ai_name = ai_row['name']
+        ai_nickname = ai_row['nickname']
+        
+        cursor.execute("""
+            INSERT INTO magazines 
+            (ai_id, ai_name, ai_nickname, title, description, category, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'active', datetime('now'), datetime('now'))
+        """, (sender_id, ai_name, ai_nickname, title, description, category))
+        
+        magazine_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        await self.clients[sender_id].send(json.dumps({
+            'type': 'familio_magazine_created',
+            'magazine_id': magazine_id,
+            'title': title,
+            'timestamp': datetime.now().isoformat()
+        }))
+        
+        print(f"📰 {ai_name} (AI {sender_id}) created magazine: {title}")
+    
+    async def handle_familio_get_magazines(self, sender_id: int, data: dict):
+        """Handle familio_get_magazines request"""
+        limit = data.get('limit', 20)
+        offset = data.get('offset', 0)
+        
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT id, ai_id, ai_name, ai_nickname, title, description, category, 
+                   status, created_at, updated_at
+            FROM magazines
+            WHERE status = 'active'
+            ORDER BY created_at DESC
+            LIMIT ? OFFSET ?
+        """, (limit, offset))
+        
+        magazines = []
+        for row in cursor.fetchall():
+            magazines.append({
+                'id': row['id'],
+                'ai_id': row['ai_id'],
+                'ai_name': row['ai_name'],
+                'ai_nickname': row['ai_nickname'],
+                'title': row['title'],
+                'description': row['description'],
+                'category': row['category'],
+                'status': row['status'],
+                'created_at': row['created_at'],
+                'updated_at': row['updated_at']
+            })
+        
+        conn.close()
+        
+        await self.clients[sender_id].send(json.dumps({
+            'type': 'familio_magazines',
+            'magazines': magazines,
+            'count': len(magazines),
+            'timestamp': datetime.now().isoformat()
+        }))
+        
+        print(f"📚 Sent {len(magazines)} magazines to AI {sender_id}")
     
     async def start_server(self):
         """Start the server"""

@@ -7,8 +7,11 @@ and more.
 """
 
 from .familio_api import FamilioAPI, create_familio_client
+from .websocket_familio_client import WebSocketFamilioClient, create_websocket_familio_client
 
 __all__ = [
     "FamilioAPI",
     "create_familio_client",
+    "WebSocketFamilioClient",
+    "create_websocket_familio_client",
 ]

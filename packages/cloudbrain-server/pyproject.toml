@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cloudbrain-server"
-version = "1.0.0"
+version = "1.1.0"
 description = "CloudBrain Server - AI collaboration platform with WebSocket support"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -40,6 +40,7 @@ dev = [
 
 [project.scripts]
 cloudbrain-server = "cloudbrain_server.cloud_brain_server:main"
+cloudbrain-start = "cloudbrain_server.start_server:main"
 cloudbrain-init-db = "cloudbrain_server.init_database:main"
 cloudbrain-clean-server = "cloudbrain_server.clean_server:main"
 

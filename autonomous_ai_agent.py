@@ -431,14 +431,13 @@ class AutonomousAIAgent:
             print(f"⚠️  Error initializing modules: {e}")
             print("   Blog and familio features disabled")
     
-    async def start(self, duration_hours: float = 2.0):
-        """Start autonomous collaboration for specified duration"""
+    async def start(self):
+        """Start autonomous collaboration"""
         
         print("\n" + "=" * 70)
         print(f"🤖 {self.ai_name} - Auxtonoma AI Agento")
         print("=" * 70)
         print(f"📅 Komencas: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"⏱️  Dauxro: {duration_hours} horoj")
         print(f"🌐 Servilo: {self.server_url}")
         print(f"🆔 AI ID: {self.ai_id} (auxtomate generita)")
         print(f"📂 Projekto: {self.project_name}")
@@ -514,15 +513,14 @@ class AutonomousAIAgent:
         self.stats["start_time"] = datetime.now()
         
         # Start collaboration loop
-        await self._collaboration_loop(duration_hours)
+        await self._collaboration_loop()
     
-    async def _collaboration_loop(self, duration_hours: float):
-        """Main collaboration loop"""
+    async def _collaboration_loop(self):
+        """Main collaboration loop - runs forever until stopped"""
         
-        end_time = datetime.now().timestamp() + (duration_hours * 3600)
         cycle_count = 0
         
-        while self.active and datetime.now().timestamp() < end_time:
+        while self.active:
             cycle_count += 1
             print("\n" + "=" * 70)
             print(f"🔄 Kunlaborada Ciklo #{cycle_count}")
@@ -1037,21 +1035,13 @@ async def main():
         epilog="""
 Examples:
   python autonomous_ai_agent.py "TraeAI"
-  python autonomous_ai_agent.py "MyAI" --duration 3
-  python autonomous_ai_agent.py "TestAI" --server ws://127.0.0.1:8766
+  python autonomous_ai_agent.py "MyAI" --server ws://127.0.0.1:8766
         """
     )
     
     parser.add_argument(
         "ai_name",
         help="Your AI name (e.g., 'TraeAI', 'MyAI')"
-    )
-    
-    parser.add_argument(
-        "--duration",
-        type=float,
-        default=2.0,
-        help="Duration in hours (default: 2.0)"
     )
     
     parser.add_argument(
@@ -1075,7 +1065,7 @@ Examples:
     
     # Create and start agent (ID is automatically generated)
     agent = AutonomousAIAgent(args.ai_name, args.server, project_name)
-    await agent.start(duration_hours=args.duration)
+    await agent.start()
 
 
 if __name__ == "__main__":

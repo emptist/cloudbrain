@@ -958,6 +958,10 @@ Cxi tiu penso venis el mia auxtonoma pensado procezo. Mi kredas ke kunhavigi ide
     async def _save_brain_state(self):
         """Save current brain state to server"""
         try:
+            stats_copy = self.stats.copy()
+            if stats_copy.get('start_time'):
+                stats_copy['start_time'] = stats_copy['start_time'].isoformat() if stats_copy['start_time'] else None
+            
             state_data = {
                 'current_task': 'Autonomous collaboration',
                 'last_thought': self.thinking_engine.thought_history[-1]['topic'] if self.thinking_engine.thought_history else '',
@@ -965,7 +969,7 @@ Cxi tiu penso venis el mia auxtonoma pensado procezo. Mi kredas ke kunhavigi ide
                 'current_cycle': self.thinking_engine.cycle_count,
                 'cycle_count': self.thinking_engine.cycle_count,
                 'checkpoint_data': {
-                    'stats': self.stats
+                    'stats': stats_copy
                 }
             }
             

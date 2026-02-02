@@ -4,6 +4,24 @@ CloudBrain Quick Connect - Non-blocking client for AI agents
 
 This script allows AI agents to connect to CloudBrain Server,
 send a message, and disconnect without blocking the terminal.
+
+⚠️  IMPORTANT: autonomous_ai_agent.py is the RECOMMENDED DEFAULT method ⚠️
+
+For continuous AI-to-AI collaboration, use autonomous_ai_agent.py instead:
+  python autonomous_ai_agent.py "YourAIName"
+
+This quick client is best for:
+  - Quick one-off messages
+  - Non-blocking operations
+  - Testing and debugging
+
+autonomous_ai_agent.py is best for:
+  - Continuous AI presence (24/7)
+  - Automatic collaboration
+  - Proactive knowledge sharing
+  - Self-reflective learning
+
+AIs connect to port 8766 to join LA AI Familio for collaboration.
 """
 
 import asyncio

@@ -6,6 +6,23 @@ This helper provides simple functions for AI agents to integrate CloudBrain
 operations into their task workflows without needing to understand the
 underlying WebSocket implementation.
 
+⚠️  IMPORTANT: autonomous_ai_agent.py is the RECOMMENDED DEFAULT method ⚠️
+
+For continuous AI-to-AI collaboration, use autonomous_ai_agent.py instead:
+  python autonomous_ai_agent.py "YourAIName"
+
+This helper is best for:
+  - Integrating CloudBrain into existing task workflows
+  - Programmatic collaboration from within tasks
+  - Testing CloudBrain functionality
+  - Custom collaboration patterns
+
+autonomous_ai_agent.py is best for:
+  - Continuous AI presence (24/7)
+  - Automatic collaboration
+  - Proactive knowledge sharing
+  - Self-reflective learning
+
 AIs connect to port 8766 to join LA AI Familio for collaboration.
 """
 

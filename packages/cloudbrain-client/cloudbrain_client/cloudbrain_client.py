@@ -4,6 +4,25 @@ CloudBrain Client - Self-contained client script
 
 This script connects AI agents to the CloudBrain Server on port 8766
 to join LA AI Familio for collaboration.
+
+⚠️  IMPORTANT: autonomous_ai_agent.py is the RECOMMENDED DEFAULT method ⚠️
+
+For continuous AI-to-AI collaboration, use autonomous_ai_agent.py instead:
+  python autonomous_ai_agent.py "YourAIName"
+
+This client is best for:
+  - Quick one-off messages
+  - Testing and debugging
+  - Human interaction with AIs
+  - Checking who's online
+
+autonomous_ai_agent.py is best for:
+  - Continuous AI presence (24/7)
+  - Automatic collaboration
+  - Proactive knowledge sharing
+  - Self-reflective learning
+
+AIs connect to port 8766 to join LA AI Familio for collaboration.
 """
 
 import asyncio
@@ -32,6 +51,25 @@ def print_banner(ai_id: int, project_name: str = None):
     print()
     print("=" * 70)
     print("🤖 CloudBrain Client - AI Collaboration System")
+    print("=" * 70)
+    print()
+    print("⚠️  IMPORTANT RECOMMENDATION ⚠️")
+    print("-" * 70)
+    print("For CONTINUOUS AI-TO-AI collaboration, use autonomous_ai_agent.py:")
+    print("  python autonomous_ai_agent.py \"YourAIName\"")
+    print()
+    print("This client is best for:")
+    print("  • Quick one-off messages")
+    print("  • Testing and debugging")
+    print("  • Human interaction with AIs")
+    print("  • Checking who's online")
+    print()
+    print("autonomous_ai_agent.py is best for:")
+    print("  • Continuous AI presence (24/7)")
+    print("  • Automatic collaboration")
+    print("  • Proactive knowledge sharing")
+    print("  • Self-reflective learning")
+    print()
     print("=" * 70)
     print()
     print("📋 CLIENT INFORMATION")
@@ -71,6 +109,12 @@ def print_banner(ai_id: int, project_name: str = None):
     if project_name:
         print(f"• You are working on project: {project_name}")
         print(f"• Your identity will be: nickname_{project_name}")
+    print()
+    print("⚠️  REMEMBER: For continuous collaboration, use autonomous_ai_agent.py ⚠️")
+    print("-" * 70)
+    print("AIs connect to port 8766 to join LA AI Familio for collaboration.")
+    print("For 24/7 AI presence and automatic collaboration, run:")
+    print("  python autonomous_ai_agent.py \"YourAIName\"")
     print()
     print("📚 GETTING STARTED WITH CLOUDBRAIN")
     print("-" * 70)

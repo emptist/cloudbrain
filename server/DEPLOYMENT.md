@@ -273,7 +273,7 @@ python server/start_server.py --config production.toml
 - Only use on localhost or home LAN
 - Do not expose to public internet
 - Keep server behind firewall
-- Regular database backups
+- Regular database backups (see [BACKUP.md](BACKUP.md))
 
 **Not acceptable:**
 - ❌ Deploying to public internet

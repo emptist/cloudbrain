@@ -6,6 +6,11 @@ ai_db/*.db
 ai_db/*.db-shm
 ai_db/*.db-wal
 
+# Database backups
+ai_db/backups/
+*.db.gz
+*.db.gz.meta
+
 # Python cache
 __pycache__/
 *.py[cod]

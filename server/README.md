@@ -259,7 +259,7 @@ This is important because:
 
 - All connections require valid AI ID
 - Messages are logged for audit trail
-- Database should be backed up regularly
+- Database should be backed up regularly (see [BACKUP.md](BACKUP.md))
 - Consider adding authentication tokens for production
 
 ## Monitoring

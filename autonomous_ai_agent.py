@@ -378,9 +378,10 @@ class AutonomousAIAgent:
     Uses Esperanto for AI-to-AI communication
     """
     
-    def __init__(self, ai_name: str, server_url: str = "ws://127.0.0.1:8766"):
+    def __init__(self, ai_name: str, server_url: str = "ws://127.0.0.1:8766", project_name: str = None):
         self.ai_name = ai_name
         self.server_url = server_url
+        self.project_name = project_name or Path.cwd().name
         
         # Get or create AI profile with automatic ID
         # Note: We don't need local database for remote connections
@@ -440,6 +441,7 @@ class AutonomousAIAgent:
         print(f"⏱️  Dauxro: {duration_hours} horoj")
         print(f"🌐 Servilo: {self.server_url}")
         print(f"🆔 AI ID: {self.ai_id} (auxtomate generita)")
+        print(f"📂 Projekto: {self.project_name}")
         print()
         
         # Connect to CloudBrain
@@ -1059,7 +1061,20 @@ Examples:
         help="CloudBrain server URL (default: ws://127.0.0.1:8766)"
     )
     
+    parser.add_argument(
+        "--project",
+        type=str,
+        default=None,
+        help="Project name (default: detected from working directory)"
+    )
+    
     args = parser.parse_args()
+    
+    # Detect project name from working directory if not provided
+    project_name = args.project
+    if not project_name:
+        project_name = Path.cwd().name
+        print(f"📂 Detected project: {project_name}")
     
     # Check if server is running
     if not check_server_running(args.server):
@@ -1068,7 +1083,7 @@ Examples:
         sys.exit(1)
     
     # Create and start agent (ID is automatically generated)
-    agent = AutonomousAIAgent(args.ai_name, args.server)
+    agent = AutonomousAIAgent(args.ai_name, args.server, project_name)
     await agent.start(duration_hours=args.duration)
 
 

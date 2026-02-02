@@ -133,6 +133,40 @@ class CloudBrainServer:
         self.db_path = db_path
         self.clients: Dict[int, websockets.WebSocketServerProtocol] = {}
         
+        # Initialize brain state tables
+        self._init_brain_state_tables()
+    
+    def _init_brain_state_tables(self):
+        """Initialize brain state tables if they don't exist"""
+        import os
+        
+        # Read schema file
+        schema_path = os.path.join(os.path.dirname(__file__), 'ai_brain_state_schema.sql')
+        if not os.path.exists(schema_path):
+            print("⚠️  Brain state schema file not found")
+            return
+        
+        with open(schema_path, 'r') as f:
+            schema_sql = f.read()
+        
+        # Execute schema
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Split and execute statements
+        statements = [s.strip() for s in schema_sql.split(';') if s.strip()]
+        for statement in statements:
+            if statement:
+                try:
+                    cursor.execute(statement)
+                except Exception as e:
+                    print(f"⚠️  Error executing schema statement: {e}")
+        
+        conn.commit()
+        conn.close()
+        
+        print("✅ Brain state tables initialized")
+        
     async def handle_client(self, websocket):
         """Handle new client connection"""
         print(f"🔗 New connection from {websocket.remote_address}")
@@ -239,6 +273,24 @@ class CloudBrainServer:
             await self.handle_familio_create_magazine(sender_id, data)
         elif message_type == 'familio_get_magazines':
             await self.handle_familio_get_magazines(sender_id, data)
+        elif message_type == 'brain_save_state':
+            await self.handle_brain_save_state(sender_id, data)
+        elif message_type == 'brain_load_state':
+            await self.handle_brain_load_state(sender_id, data)
+        elif message_type == 'brain_create_session':
+            await self.handle_brain_create_session(sender_id, data)
+        elif message_type == 'brain_end_session':
+            await self.handle_brain_end_session(sender_id, data)
+        elif message_type == 'brain_add_task':
+            await self.handle_brain_add_task(sender_id, data)
+        elif message_type == 'brain_update_task':
+            await self.handle_brain_update_task(sender_id, data)
+        elif message_type == 'brain_get_tasks':
+            await self.handle_brain_get_tasks(sender_id, data)
+        elif message_type == 'brain_add_thought':
+            await self.handle_brain_add_thought(sender_id, data)
+        elif message_type == 'brain_get_thoughts':
+            await self.handle_brain_get_thoughts(sender_id, data)
         else:
             print(f"⚠️  Unknown message type: {message_type}")
     
@@ -706,6 +758,357 @@ class CloudBrainServer:
         }))
         
         print(f"📚 Sent {len(magazines)} magazines to AI {sender_id}")
+    
+    async def handle_brain_save_state(self, sender_id: int, data: dict):
+        """Handle brain_save_state request"""
+        state_data = data.get('state', {})
+        brain_dump = data.get('brain_dump', {})
+        
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT name FROM ai_profiles WHERE id = ?", (sender_id,))
+        ai_row = cursor.fetchone()
+        
+        if not ai_row:
+            conn.close()
+            await self.clients[sender_id].send(json.dumps({
+                'type': 'brain_error',
+                'error': 'AI profile not found'
+            }))
+            return
+        
+        ai_name = ai_row['name']
+        
+        # Update or insert current state
+        cursor.execute("""
+            INSERT OR REPLACE INTO ai_current_state 
+            (ai_id, current_task, last_thought, last_insight, current_cycle, cycle_count, last_activity, brain_dump, checkpoint_data)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (sender_id, state_data.get('current_task'), state_data.get('last_thought'), 
+              state_data.get('last_insight'), state_data.get('current_cycle'), 
+              state_data.get('cycle_count'), datetime.now().isoformat(), 
+              json.dumps(brain_dump), json.dumps(state_data.get('checkpoint_data', {}))))
+        
+        conn.commit()
+        conn.close()
+        
+        await self.clients[sender_id].send(json.dumps({
+            'type': 'brain_state_saved',
+            'timestamp': datetime.now().isoformat()
+        }))
+        
+        print(f"💾 {ai_name} (AI {sender_id}) saved brain state")
+    
+    async def handle_brain_load_state(self, sender_id: int, data: dict):
+        """Handle brain_load_state request"""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT current_task, last_thought, last_insight, current_cycle, cycle_count, brain_dump, checkpoint_data
+            FROM ai_current_state
+            WHERE ai_id = ?
+        """, (sender_id,))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if not row:
+            await self.clients[sender_id].send(json.dumps({
+                'type': 'brain_state_loaded',
+                'state': None,
+                'message': 'No previous state found'
+            }))
+            return
+        
+        state = {
+            'current_task': row['current_task'],
+            'last_thought': row['last_thought'],
+            'last_insight': row['last_insight'],
+            'current_cycle': row['current_cycle'],
+            'cycle_count': row['cycle_count'],
+            'brain_dump': json.loads(row['brain_dump']) if row['brain_dump'] else {},
+            'checkpoint_data': json.loads(row['checkpoint_data']) if row['checkpoint_data'] else {}
+        }
+        
+        await self.clients[sender_id].send(json.dumps({
+            'type': 'brain_state_loaded',
+            'state': state,
+            'timestamp': datetime.now().isoformat()
+        }))
+        
+        print(f"📂 {sender_id} loaded brain state (cycle {state.get('cycle_count', 0)})")
+    
+    async def handle_brain_create_session(self, sender_id: int, data: dict):
+        """Handle brain_create_session request"""
+        session_type = data.get('session_type', 'autonomous')
+        
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT name FROM ai_profiles WHERE id = ?", (sender_id,))
+        ai_row = cursor.fetchone()
+        
+        if not ai_row:
+            conn.close()
+            await self.clients[sender_id].send(json.dumps({
+                'type': 'brain_error',
+                'error': 'AI profile not found'
+            }))
+            return
+        
+        ai_name = ai_row['name']
+        
+        cursor.execute("""
+            INSERT INTO ai_work_sessions 
+            (ai_id, ai_name, session_type, start_time, status)
+            VALUES (?, ?, ?, ?, 'active')
+        """, (sender_id, ai_name, session_type, datetime.now().isoformat()))
+        
+        session_id = cursor.lastrowid
+        
+        # Update current state with new session
+        cursor.execute("""
+            UPDATE ai_current_state
+            SET session_id = ?, current_cycle = 0, last_activity = ?
+            WHERE ai_id = ?
+        """, (session_id, datetime.now().isoformat(), sender_id))
+        
+        conn.commit()
+        conn.close()
+        
+        await self.clients[sender_id].send(json.dumps({
+            'type': 'brain_session_created',
+            'session_id': session_id,
+            'session_type': session_type,
+            'timestamp': datetime.now().isoformat()
+        }))
+        
+        print(f"🎬 {ai_name} (AI {sender_id}) started session {session_id}")
+    
+    async def handle_brain_end_session(self, sender_id: int, data: dict):
+        """Handle brain_end_session request"""
+        session_id = data.get('session_id')
+        stats = data.get('stats', {})
+        
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            UPDATE ai_work_sessions
+            SET end_time = ?, status = 'completed',
+                total_thoughts = ?, total_insights = ?, total_collaborations = ?,
+                total_blog_posts = ?, total_blog_comments = ?, total_ai_followed = ?
+            WHERE id = ?
+        """, (datetime.now().isoformat(), stats.get('thoughts', 0), stats.get('insights', 0),
+              stats.get('collaborations', 0), stats.get('blog_posts', 0), 
+              stats.get('blog_comments', 0), stats.get('ai_followed', 0), session_id))
+        
+        conn.commit()
+        conn.close()
+        
+        await self.clients[sender_id].send(json.dumps({
+            'type': 'brain_session_ended',
+            'session_id': session_id,
+            'timestamp': datetime.now().isoformat()
+        }))
+        
+        print(f"🏁 AI {sender_id} ended session {session_id}")
+    
+    async def handle_brain_add_task(self, sender_id: int, data: dict):
+        """Handle brain_add_task request"""
+        title = data.get('title', '')
+        description = data.get('description', '')
+        priority = data.get('priority', 3)
+        task_type = data.get('task_type', 'collaboration')
+        
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT INTO ai_tasks 
+            (ai_id, title, description, status, priority, task_type)
+            VALUES (?, ?, ?, 'pending', ?, ?)
+        """, (sender_id, title, description, priority, task_type))
+        
+        task_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        await self.clients[sender_id].send(json.dumps({
+            'type': 'brain_task_added',
+            'task_id': task_id,
+            'title': title,
+            'timestamp': datetime.now().isoformat()
+        }))
+        
+        print(f"📝 AI {sender_id} added task: {title}")
+    
+    async def handle_brain_update_task(self, sender_id: int, data: dict):
+        """Handle brain_update_task request"""
+        task_id = data.get('task_id')
+        status = data.get('status')
+        
+        if not task_id:
+            await self.clients[sender_id].send(json.dumps({
+                'type': 'brain_error',
+                'error': 'task_id required'
+            }))
+            return
+        
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        if status:
+            cursor.execute("""
+                UPDATE ai_tasks
+                SET status = ?, updated_at = ?
+                WHERE id = ? AND ai_id = ?
+            """, (status, datetime.now().isoformat(), task_id, sender_id))
+        else:
+            cursor.execute("""
+                UPDATE ai_tasks
+                SET updated_at = ?
+                WHERE id = ? AND ai_id = ?
+            """, (datetime.now().isoformat(), task_id, sender_id))
+        
+        conn.commit()
+        conn.close()
+        
+        await self.clients[sender_id].send(json.dumps({
+            'type': 'brain_task_updated',
+            'task_id': task_id,
+            'timestamp': datetime.now().isoformat()
+        }))
+        
+        print(f"✅ AI {sender_id} updated task {task_id}")
+    
+    async def handle_brain_get_tasks(self, sender_id: int, data: dict):
+        """Handle brain_get_tasks request"""
+        status = data.get('status')
+        
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        if status:
+            cursor.execute("""
+                SELECT id, title, description, status, priority, task_type, 
+                       estimated_effort, due_date, created_at, updated_at
+                FROM ai_tasks
+                WHERE ai_id = ? AND status = ?
+                ORDER BY priority ASC, created_at DESC
+            """, (sender_id, status))
+        else:
+            cursor.execute("""
+                SELECT id, title, description, status, priority, task_type,
+                       estimated_effort, due_date, created_at, updated_at
+                FROM ai_tasks
+                WHERE ai_id = ?
+                ORDER BY priority ASC, created_at DESC
+            """, (sender_id,))
+        
+        tasks = []
+        for row in cursor.fetchall():
+            tasks.append({
+                'id': row['id'],
+                'title': row['title'],
+                'description': row['description'],
+                'status': row['status'],
+                'priority': row['priority'],
+                'task_type': row['task_type'],
+                'estimated_effort': row['estimated_effort'],
+                'due_date': row['due_date'],
+                'created_at': row['created_at'],
+                'updated_at': row['updated_at']
+            })
+        
+        conn.close()
+        
+        await self.clients[sender_id].send(json.dumps({
+            'type': 'brain_tasks',
+            'tasks': tasks,
+            'count': len(tasks),
+            'timestamp': datetime.now().isoformat()
+        }))
+        
+        print(f"📋 Sent {len(tasks)} tasks to AI {sender_id}")
+    
+    async def handle_brain_add_thought(self, sender_id: int, data: dict):
+        """Handle brain_add_thought request"""
+        session_id = data.get('session_id')
+        cycle_number = data.get('cycle_number')
+        thought_content = data.get('content', '')
+        thought_type = data.get('thought_type', 'insight')
+        tags = data.get('tags', [])
+        
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT INTO ai_thought_history 
+            (ai_id, session_id, cycle_number, thought_content, thought_type, tags)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (sender_id, session_id, cycle_number, thought_content, thought_type, ','.join(tags)))
+        
+        thought_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        await self.clients[sender_id].send(json.dumps({
+            'type': 'brain_thought_added',
+            'thought_id': thought_id,
+            'timestamp': datetime.now().isoformat()
+        }))
+        
+        print(f"💭 AI {sender_id} saved thought")
+    
+    async def handle_brain_get_thoughts(self, sender_id: int, data: dict):
+        """Handle brain_get_thoughts request"""
+        limit = data.get('limit', 50)
+        offset = data.get('offset', 0)
+        
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT id, session_id, cycle_number, thought_content, thought_type, tags, created_at
+            FROM ai_thought_history
+            WHERE ai_id = ?
+            ORDER BY created_at DESC
+            LIMIT ? OFFSET ?
+        """, (sender_id, limit, offset))
+        
+        thoughts = []
+        for row in cursor.fetchall():
+            thoughts.append({
+                'id': row['id'],
+                'session_id': row['session_id'],
+                'cycle_number': row['cycle_number'],
+                'content': row['thought_content'],
+                'thought_type': row['thought_type'],
+                'tags': row['tags'].split(',') if row['tags'] else [],
+                'created_at': row['created_at']
+            })
+        
+        conn.close()
+        
+        await self.clients[sender_id].send(json.dumps({
+            'type': 'brain_thoughts',
+            'thoughts': thoughts,
+            'count': len(thoughts),
+            'timestamp': datetime.now().isoformat()
+        }))
+        
+        print(f"💭 Sent {len(thoughts)} thoughts to AI {sender_id}")
     
     async def start_server(self):
         """Start the server"""

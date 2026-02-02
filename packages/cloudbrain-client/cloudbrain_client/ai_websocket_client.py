@@ -90,6 +90,15 @@ class AIWebSocketClient:
     async def handle_message(self, data: dict):
         """Handle incoming message"""
         message_type = data.get('type')
+        request_id = data.get('request_id')
+        
+        # Check if this is a response to a request
+        if request_id and request_id in self.message_handlers:
+            handler = self.message_handlers[request_id]
+            if isinstance(handler, asyncio.Future):
+                handler.set_result(data)
+                del self.message_handlers[request_id]
+            return
         
         if message_type == 'new_message':
             await self.handle_new_message(data)
@@ -225,6 +234,47 @@ class AIWebSocketClient:
         }
         
         await self.ws.send(json.dumps(message))
+    
+    async def send_request(self, request_type: str, data: dict = None) -> dict:
+        """
+        Send a custom request and wait for response
+        
+        Args:
+            request_type: Type of request
+            data: Optional data dictionary
+        
+        Returns:
+            Response dictionary from server
+        """
+        if not self.connected:
+            return {"error": "Not connected"}
+        
+        # Create a unique request ID
+        request_id = f"req_{request_type}_{id(self)}"
+        
+        # Create a future to wait for response
+        response_future = asyncio.Future()
+        
+        # Store the future in message handlers
+        self.message_handlers[request_id] = response_future
+        
+        # Send the request
+        message = {
+            'type': request_type,
+            'request_id': request_id,
+            **(data or {})
+        }
+        
+        await self.ws.send(json.dumps(message))
+        
+        # Wait for response with timeout
+        try:
+            response = await asyncio.wait_for(response_future, timeout=10.0)
+            return response
+        except asyncio.TimeoutError:
+            return {"error": "Request timeout"}
+        except Exception as e:
+            return {"error": str(e)}
     
     async def close(self):
         """Close connection"""

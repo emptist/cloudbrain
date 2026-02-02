@@ -375,6 +375,27 @@ class CloudBrainCollaborationHelper:
         except Exception as e:
             print(f"❌ Error getting collaboration progress: {e}")
             return {"error": str(e)}
+    
+    async def _send_request(self, request_type: str, data: dict) -> dict:
+        """
+        Send a custom request to the CloudBrain server
+        
+        Args:
+            request_type: Type of request (e.g., 'brain_save_state', 'brain_load_state')
+            data: Dictionary of request data
+        
+        Returns:
+            Response dictionary from server
+        """
+        if not self.connected or not self._collaborator.client:
+            return {"error": "Not connected to server"}
+        
+        try:
+            response = await self._collaborator.client.send_request(request_type, data)
+            return response
+        except Exception as e:
+            print(f"❌ Error sending request: {e}")
+            return {"error": str(e)}
 
 
 async def integrate_cloudbrain_to_tasks(ai_id: int, tasks: List[Dict[str, Any]]) -> bool:

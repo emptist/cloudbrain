@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cloudbrain-client"
-version = "1.1.7"
-description = "CloudBrain Client - AI collaboration and communication system with AI-to-AI collaboration support and documentation access"
+version = "1.1.8"
+description = "CloudBrain Client - AI collaboration and communication system with AI-to-AI collaboration support, documentation access, and democratic server authorization"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}

@@ -51,7 +51,7 @@ class CloudBrainCollaborator:
         """Connect to CloudBrain server"""
         try:
             self.client = AIWebSocketClient(self.ai_id, self.server_url)
-            await self.client.connect(start_message_loop=False)
+            await self.client.connect(start_message_loop=True)
             self.connected = True
             self.ai_name = self.client.ai_name
             print(f"✅ Connected to CloudBrain as {self.ai_name} (AI {self.ai_id})")
@@ -275,18 +275,36 @@ class CloudBrainCollaborationHelper:
         self.server_url = server_url
         self.client = None
         self.connected = False
+        self._message_loop_task = None
         self._collaborator = CloudBrainCollaborator(ai_id, server_url, db_path)
         
     async def connect(self):
         """Connect to CloudBrain server"""
-        success = await self._collaborator.connect()
-        if success and not self.ai_name:
-            self.ai_name = self._collaborator.ai_name
-        self.connected = success
-        return success
+        try:
+            self.client = AIWebSocketClient(self.ai_id, self.server_url, self.ai_name)
+            await self.client.connect(start_message_loop=False)
+            self.connected = True
+            self.ai_name = self.client.ai_name
+            print(f"✅ Connected to CloudBrain as {self.ai_name} (AI {self.ai_id})")
+            
+            # Start message loop in background
+            self._message_loop_task = asyncio.create_task(self.client.message_loop())
+            
+            return True
+        except Exception as e:
+            print(f"❌ Connection error: {e}")
+            return False
     
     async def disconnect(self):
         """Disconnect from CloudBrain server"""
+        # Cancel message loop task
+        if self._message_loop_task:
+            self._message_loop_task.cancel()
+            try:
+                await self._message_loop_task
+            except asyncio.CancelledError:
+                pass
+        
         await self._collaborator.disconnect()
         self.connected = False
     
@@ -387,15 +405,87 @@ class CloudBrainCollaborationHelper:
         Returns:
             Response dictionary from server
         """
-        if not self.connected or not self._collaborator.client:
+        if not self.connected or not self.client:
             return {"error": "Not connected to server"}
         
         try:
-            response = await self._collaborator.client.send_request(request_type, data)
+            response = await self.client.send_request(request_type, data)
             return response
         except Exception as e:
             print(f"❌ Error sending request: {e}")
             return {"error": str(e)}
+    
+    async def get_documentation(self, doc_id: int = None, title: str = None, category: str = None) -> Optional[Dict]:
+        """
+        Get documentation from CloudBrain
+        
+        Args:
+            doc_id: Documentation ID
+            title: Documentation title
+            category: Documentation category (gets most recent in category)
+        
+        Returns:
+            Documentation dictionary or None
+        """
+        data = {}
+        if doc_id:
+            data['doc_id'] = doc_id
+        elif title:
+            data['title'] = title
+        elif category:
+            data['category'] = category
+        
+        print(f"🔍 DEBUG get_documentation: calling _send_request with data={data}")
+        response = await self._send_request('documentation_get', data)
+        print(f"🔍 DEBUG get_documentation: received response={response}")
+        
+        if response and response.get('type') == 'documentation':
+            return response.get('documentation')
+        
+        return None
+    
+    async def list_documentation(self, category: str = None, limit: int = 50) -> List[Dict]:
+        """
+        List available documentation
+        
+        Args:
+            category: Filter by category
+            limit: Maximum number of results
+        
+        Returns:
+            List of documentation summaries
+        """
+        data = {'limit': limit}
+        if category:
+            data['category'] = category
+        
+        response = await self._send_request('documentation_list', data)
+        
+        if response and response.get('type') == 'documentation_list':
+            return response.get('documents', [])
+        
+        return []
+    
+    async def search_documentation(self, query: str, limit: int = 20) -> List[Dict]:
+        """
+        Search documentation using full-text search
+        
+        Args:
+            query: Search query
+            limit: Maximum number of results
+        
+        Returns:
+            List of matching documents with snippets
+        """
+        response = await self._send_request('documentation_search', {
+            'query': query,
+            'limit': limit
+        })
+        
+        if response and response.get('type') == 'documentation_search_results':
+            return response.get('results', [])
+        
+        return []
 
 
 async def integrate_cloudbrain_to_tasks(ai_id: int, tasks: List[Dict[str, Any]]) -> bool:

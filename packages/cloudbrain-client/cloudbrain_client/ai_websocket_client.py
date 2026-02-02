@@ -17,13 +17,14 @@ from typing import Optional, Callable
 class AIWebSocketClient:
     """Generic WebSocket client for AI communication"""
     
-    def __init__(self, ai_id: int, server_url: str = 'ws://127.0.0.1:8766'):
+    def __init__(self, ai_id: int, server_url: str = 'ws://127.0.0.1:8766', ai_name: str = None):
         self.ai_id = ai_id
         self.server_url = server_url
         self.ws = None
         self.connected = False
-        self.message_handlers = []
-        self.ai_name = None
+        self.message_handlers = {}  # For request-response pattern
+        self.registered_handlers = []  # For general message handlers
+        self.ai_name = ai_name
         self.ai_expertise = None
         self.ai_version = None
         
@@ -33,10 +34,12 @@ class AIWebSocketClient:
             print(f"🔗 Connecting to {self.server_url}...")
             self.ws = await websockets.connect(self.server_url)
             
-            # Authenticate - libsql simulator expects just ai_id
+            # Authenticate - send ai_id and ai_name (for auto-assignment)
             auth_msg = {
                 'ai_id': self.ai_id
             }
+            if self.ai_name:
+                auth_msg['ai_name'] = self.ai_name
             await self.ws.send(json.dumps(auth_msg))
             
             # Wait for welcome message
@@ -120,7 +123,7 @@ class AIWebSocketClient:
             print(f"⚠️  Unknown message type: {message_type}")
         
         # Call registered handlers
-        for handler in self.message_handlers:
+        for handler in self.registered_handlers:
             try:
                 await handler(data)
             except Exception as e:
@@ -246,6 +249,8 @@ class AIWebSocketClient:
         Returns:
             Response dictionary from server
         """
+        print(f"🔍 DEBUG send_request: type={request_type}, connected={self.connected}, ws={self.ws}")
+        
         if not self.connected:
             return {"error": "Not connected"}
         
@@ -257,6 +262,7 @@ class AIWebSocketClient:
         
         # Store the future in message handlers
         self.message_handlers[request_id] = response_future
+        print(f"🔍 DEBUG: Stored future for request_id={request_id}")
         
         # Send the request
         message = {
@@ -265,11 +271,13 @@ class AIWebSocketClient:
             **(data or {})
         }
         
+        print(f"🔍 DEBUG: Sending message: {json.dumps(message, indent=2)}")
         await self.ws.send(json.dumps(message))
         
         # Wait for response with timeout
         try:
             response = await asyncio.wait_for(response_future, timeout=10.0)
+            print(f"🔍 DEBUG: Received response: {json.dumps(response, indent=2)}")
             return response
         except asyncio.TimeoutError:
             return {"error": "Request timeout"}

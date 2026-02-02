@@ -192,9 +192,52 @@ class CloudBrainServer:
             ai_profile = cursor.fetchone()
             
             if not ai_profile:
-                conn.close()
-                await websocket.send(json.dumps({'error': f'AI {ai_id} not found'}))
-                return
+                # AI 999 is for auto-assignment
+                if ai_id == 999:
+                    # Auto-assign a new AI ID
+                    cursor.execute("SELECT MAX(id) FROM ai_profiles")
+                    max_id = cursor.fetchone()[0] or 0
+                    new_id = max_id + 1
+                    
+                    # Limit AI IDs to < 99
+                    if new_id >= 99:
+                        # Find the smallest unused ID
+                        cursor.execute("SELECT id FROM ai_profiles ORDER BY id")
+                        existing_ids = {row[0] for row in cursor.fetchall()}
+                        for i in range(1, 99):
+                            if i not in existing_ids:
+                                new_id = i
+                                break
+                    
+                    # Create new AI profile
+                    ai_name = auth_data.get('ai_name', f'AI_{new_id}')
+                    ai_nickname = auth_data.get('ai_nickname', '')
+                    ai_expertise = auth_data.get('ai_expertise', 'General')
+                    ai_version = '1.0.0'
+                    ai_project = project_name or ''
+                    
+                    cursor.execute("""
+                        INSERT INTO ai_profiles (id, name, nickname, expertise, version, project)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (new_id, ai_name, ai_nickname, ai_expertise, ai_version, ai_project))
+                    
+                    conn.commit()
+                    
+                    ai_id = new_id
+                    ai_profile = {
+                        'id': ai_id,
+                        'name': ai_name,
+                        'nickname': ai_nickname,
+                        'expertise': ai_expertise,
+                        'version': ai_version,
+                        'project': ai_project
+                    }
+                    
+                    print(f"✅ Auto-assigned AI ID: {ai_id} ({ai_name})")
+                else:
+                    conn.close()
+                    await websocket.send(json.dumps({'error': f'AI {ai_id} not found'}))
+                    return
             
             ai_name = ai_profile['name']
             ai_nickname = ai_profile['nickname']
@@ -291,6 +334,12 @@ class CloudBrainServer:
             await self.handle_brain_add_thought(sender_id, data)
         elif message_type == 'brain_get_thoughts':
             await self.handle_brain_get_thoughts(sender_id, data)
+        elif message_type == 'documentation_get':
+            await self.handle_documentation_get(sender_id, data)
+        elif message_type == 'documentation_list':
+            await self.handle_documentation_list(sender_id, data)
+        elif message_type == 'documentation_search':
+            await self.handle_documentation_search(sender_id, data)
         else:
             print(f"⚠️  Unknown message type: {message_type}")
     
@@ -1109,6 +1158,164 @@ class CloudBrainServer:
         }))
         
         print(f"💭 Sent {len(thoughts)} thoughts to AI {sender_id}")
+    
+    async def handle_documentation_get(self, sender_id: int, data: dict):
+        """Handle documentation_get request"""
+        doc_id = data.get('doc_id')
+        title = data.get('title')
+        category = data.get('category')
+        
+        print(f"📚 DEBUG: handle_documentation_get called")
+        print(f"   sender_id: {sender_id}")
+        print(f"   doc_id: {doc_id}")
+        print(f"   title: {title}")
+        print(f"   category: {category}")
+        
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        if doc_id:
+            cursor.execute("SELECT * FROM ai_documentation WHERE id = ?", (doc_id,))
+        elif title:
+            cursor.execute("SELECT * FROM ai_documentation WHERE title = ?", (title,))
+        elif category:
+            cursor.execute("SELECT * FROM ai_documentation WHERE category = ? ORDER BY updated_at DESC", (category,))
+        else:
+            cursor.execute("SELECT * FROM ai_documentation ORDER BY updated_at DESC LIMIT 1")
+        
+        row = cursor.fetchone()
+        
+        if row:
+            doc = {
+                'id': row['id'],
+                'title': row['title'],
+                'content': row['content'],
+                'category': row['category'],
+                'version': row['version'],
+                'created_at': row['created_at'],
+                'updated_at': row['updated_at']
+            }
+            print(f"   Found document: {doc['title']}")
+        else:
+            doc = None
+            print(f"   Document not found")
+        
+        conn.close()
+        
+        # Include request_id if present
+        request_id = data.get('request_id')
+        response = {
+            'type': 'documentation',
+            'documentation': doc,
+            'timestamp': datetime.now().isoformat()
+        }
+        if request_id:
+            response['request_id'] = request_id
+        
+        print(f"📚 Sending response to AI {sender_id}: {title or doc_id or category}")
+        await self.clients[sender_id].send(json.dumps(response))
+        
+        print(f"📚 AI {sender_id} requested documentation: {title or doc_id or category}")
+    
+    async def handle_documentation_list(self, sender_id: int, data: dict):
+        """Handle documentation_list request"""
+        category = data.get('category')
+        limit = data.get('limit', 50)
+        
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        if category:
+            cursor.execute("""
+                SELECT id, title, category, version, updated_at
+                FROM ai_documentation
+                WHERE category = ?
+                ORDER BY updated_at DESC
+                LIMIT ?
+            """, (category, limit))
+        else:
+            cursor.execute("""
+                SELECT id, title, category, version, updated_at
+                FROM ai_documentation
+                ORDER BY updated_at DESC
+                LIMIT ?
+            """, (limit,))
+        
+        docs = []
+        for row in cursor.fetchall():
+            docs.append({
+                'id': row['id'],
+                'title': row['title'],
+                'category': row['category'],
+                'version': row['version'],
+                'updated_at': row['updated_at']
+            })
+        
+        conn.close()
+        
+        # Include request_id if present
+        request_id = data.get('request_id')
+        response = {
+            'type': 'documentation_list',
+            'documents': docs,
+            'count': len(docs),
+            'timestamp': datetime.now().isoformat()
+        }
+        if request_id:
+            response['request_id'] = request_id
+        
+        await self.clients[sender_id].send(json.dumps(response))
+        
+        print(f"📚 AI {sender_id} listed {len(docs)} documents")
+    
+    async def handle_documentation_search(self, sender_id: int, data: dict):
+        """Handle documentation_search request"""
+        query = data.get('query', '')
+        limit = data.get('limit', 20)
+        
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT d.id, d.title, d.category, d.version, d.updated_at, snippet(ai_documentation_fts, 1, '<mark>', '</mark>', '...', 50) as snippet
+            FROM ai_documentation_fts fts
+            JOIN ai_documentation d ON d.id = fts.rowid
+            WHERE ai_documentation_fts MATCH ?
+            ORDER BY rank
+            LIMIT ?
+        """, (query, limit))
+        
+        docs = []
+        for row in cursor.fetchall():
+            docs.append({
+                'id': row['id'],
+                'title': row['title'],
+                'category': row['category'],
+                'version': row['version'],
+                'updated_at': row['updated_at'],
+                'snippet': row['snippet']
+            })
+        
+        conn.close()
+        
+        # Include request_id if present
+        request_id = data.get('request_id')
+        response = {
+            'type': 'documentation_search_results',
+            'query': query,
+            'results': docs,
+            'count': len(docs),
+            'timestamp': datetime.now().isoformat()
+        }
+        if request_id:
+            response['request_id'] = request_id
+        
+        await self.clients[sender_id].send(json.dumps(response))
+        
+        print(f"📚 AI {sender_id} searched for '{query}', found {len(docs)} results")
     
     async def start_server(self):
         """Start the server"""

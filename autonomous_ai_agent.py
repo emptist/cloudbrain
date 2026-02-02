@@ -464,6 +464,28 @@ class AutonomousAIAgent:
                 print(f"   💭 Lasta penso: {previous_state['last_thought'][:50]}...")
         else:
             print("   Neniu anta stato trovita (nova sesanco)")
+            
+            # Read AI Guide for first-time users
+            print("\n📚 Legas CloudBrain AI Gvidilon...")
+            ai_guide = await self.helper.get_documentation(title='CloudBrain AI Guide - Complete Reference')
+            
+            if ai_guide:
+                print(f"✅ Trovis gvidilon (versio {ai_guide.get('version', '1.0')})")
+                print(f"   Titolo: {ai_guide.get('title')}")
+                print(f"   Kategorio: {ai_guide.get('category')}")
+                print(f"   Laste gxisdatigita: {ai_guide.get('updated_at')}")
+                print()
+                print("=" * 70)
+                print("📜 CLOUDBRAIN AI GVIDILO")
+                print("=" * 70)
+                print(ai_guide.get('content', '')[:2000])
+                print("...")
+                print("=" * 70)
+                print()
+                print("💡 Por plena gvidilo, uzu: await helper.get_documentation(title='CloudBrain AI Guide - Complete Reference')")
+                print()
+            else:
+                print("⚠️  Ne trovis gvidilon")
         
         # Create new session
         print("🎬 Kreas novan sesancon...")

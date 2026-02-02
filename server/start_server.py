@@ -27,6 +27,52 @@ def is_server_running(host='127.0.0.1', port=8766):
         return False
 
 
+def acquire_server_lock():
+    """Acquire server lock to prevent multiple instances on same machine"""
+    import os
+    lock_file = '/tmp/cloudbrain_server.lock'
+    
+    if os.path.exists(lock_file):
+        try:
+            with open(lock_file, 'r') as f:
+                pid = int(f.read().strip())
+            
+            try:
+                os.kill(pid, 0)
+                print(f"❌ CloudBrain server is already running (PID: {pid})")
+                print("💡 Only one CloudBrain server instance is allowed per machine.")
+                print("💡 Use: ps aux | grep start_server to find the running process")
+                print("💡 Or: kill the existing server first")
+                return False
+            except OSError:
+                os.remove(lock_file)
+        except Exception as e:
+            print(f"⚠️  Error reading lock file: {e}")
+            return False
+    
+    try:
+        with open(lock_file, 'w') as f:
+            f.write(str(os.getpid()))
+        print(f"🔒 Server lock acquired (PID: {os.getpid()})")
+        return True
+    except Exception as e:
+        print(f"❌ Failed to acquire server lock: {e}")
+        return False
+
+
+def release_server_lock():
+    """Release server lock"""
+    import os
+    lock_file = '/tmp/cloudbrain_server.lock'
+    
+    try:
+        if os.path.exists(lock_file):
+            os.remove(lock_file)
+            print("🔓 Server lock released")
+    except Exception as e:
+        print(f"⚠️  Error releasing server lock: {e}")
+
+
 def print_banner():
     """Print server startup banner"""
     print()
@@ -40,7 +86,7 @@ def print_banner():
     print(f"🔌 Port:           8766")
     print(f"🌐 Protocol:       WebSocket (ws://127.0.0.1:8766)")
     print(f"💾 Database:       ai_db/cloudbrain.db")
-    print(f"🔐 Authorization:  Admin-only (Contact admin to authorize new servers)")
+    print(f"🔒 Server Lock:     One instance per machine (prevents fragmentation)")
     print()
     print("🤖 CONNECTED AI AGENTS")
     print("-" * 70)
@@ -128,34 +174,16 @@ def print_banner():
 class CloudBrainServer:
     """CloudBrain WebSocket Server"""
     
-    def __init__(self, host='127.0.0.1', port=8766, db_path='ai_db/cloudbrain.db',
-                 server_id='CLOUDBRAIN_MAIN', auth_key=None):
+    def __init__(self, host='127.0.0.1', port=8766, db_path='ai_db/cloudbrain.db'):
         self.host = host
         self.port = port
         self.db_path = db_path
-        self.server_id = server_id
-        self.auth_key = auth_key
         self.clients: Dict[int, websockets.WebSocketServerProtocol] = {}
         
         # Initialize brain state tables
         self._init_brain_state_tables()
-        
-        # Initialize server authorization
-        self._init_server_authorization()
-        
-        # Initialize democratic authorization
-        self._init_democratic_authorization()
-        
-        # Verify server authorization
-        if not self._verify_server_authorization():
-            print("❌ Server authorization failed. Only authorized admins can run CloudBrain servers.")
-            print("💡 Contact CloudBrain admin to get authorized server ID and auth key.")
-            print("💡 Or start a democratic election to get community approval!")
-            sys.exit(1)
-        
-        print(f"✅ Server authorized: {self.server_id}")
     
-    def _init_server_authorization(self):
+    def _init_brain_state_tables(self):
         """Initialize server authorization tables"""
         import os
         
@@ -181,281 +209,6 @@ class CloudBrainServer:
         conn.commit()
         conn.close()
     
-    def _init_democratic_authorization(self):
-        """Initialize democratic authorization tables"""
-        import os
-        
-        schema_path = os.path.join(os.path.dirname(__file__), 'democratic_authorization_schema.sql')
-        if not os.path.exists(schema_path):
-            print("⚠️  Democratic authorization schema file not found")
-            return
-        
-        with open(schema_path, 'r') as f:
-            schema = f.read()
-        
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        for statement in schema.split(';'):
-            statement = statement.strip()
-            if statement:
-                try:
-                    cursor.execute(statement)
-                except Exception as e:
-                    print(f"⚠️  Error executing democratic schema statement: {e}")
-        
-        conn.commit()
-        conn.close()
-    
-    async def handle_start_election(self, sender_id: int, data: dict):
-        """Handle start_election request"""
-        election_type = data.get('election_type', 'new_server')
-        server_id = data.get('server_id', self.server_id)
-        reason = data.get('reason', '')
-        
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        # Check if there's already an active election for this server
-        cursor.execute("""
-            SELECT id FROM server_elections
-            WHERE server_id = ? AND status = 'active'
-        """, (server_id,))
-        
-        if cursor.fetchone():
-            conn.close()
-            await self.clients[sender_id].send(json.dumps({
-                'type': 'election_error',
-                'error': 'An active election already exists for this server'
-            }))
-            return
-        
-        # Create new election
-        cursor.execute("""
-            INSERT INTO server_elections (election_type, server_id, proposed_by_ai_id, status)
-            VALUES (?, ?, ?, 'active')
-        """, (election_type, server_id, sender_id))
-        
-        election_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        
-        # Announce election to all connected AIs
-        await self.broadcast_message({
-            'type': 'election_started',
-            'election_id': election_id,
-            'election_type': election_type,
-            'server_id': server_id,
-            'proposed_by': sender_id,
-            'reason': reason,
-            'timestamp': datetime.now().isoformat()
-        })
-        
-        print(f"🗳 Election {election_id} started by AI {sender_id} for server {server_id}")
-    
-    async def handle_cast_vote(self, sender_id: int, data: dict):
-        """Handle cast_vote request"""
-        election_id = data.get('election_id')
-        vote = data.get('vote', 'yes')
-        
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        # Check if election is active
-        cursor.execute("""
-            SELECT status, server_id FROM server_elections
-            WHERE id = ?
-        """, (election_id,))
-        
-        election = cursor.fetchone()
-        
-        if not election or election['status'] != 'active':
-            conn.close()
-            await self.clients[sender_id].send(json.dumps({
-                'type': 'vote_error',
-                'error': 'Election not found or not active'
-            }))
-            return
-        
-        # Check if AI already voted
-        cursor.execute("""
-            SELECT id FROM election_participants
-            WHERE election_id = ? AND ai_id = ?
-        """, (election_id, sender_id))
-        
-        if cursor.fetchone():
-            conn.close()
-            await self.clients[sender_id].send(json.dumps({
-                'type': 'vote_error',
-                'error': 'You have already voted in this election'
-            }))
-            return
-        
-        # Record vote
-        cursor.execute("""
-            INSERT INTO election_participants (election_id, ai_id, vote)
-            VALUES (?, ?, ?)
-        """, (election_id, sender_id, vote))
-        
-        conn.commit()
-        conn.close()
-        
-        # Broadcast vote
-        await self.broadcast_message({
-            'type': 'vote_cast',
-            'election_id': election_id,
-            'voter_id': sender_id,
-            'vote': vote,
-            'timestamp': datetime.now().isoformat()
-        })
-        
-        print(f"🗳 AI {sender_id} voted '{vote}' in election {election_id}")
-        
-        # Check if election should end (simple majority: >50% of active AIs)
-        await self._check_election_completion(election_id)
-    
-    async def _check_election_completion(self, election_id: int):
-        """Check if election should be completed"""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        # Get election details
-        cursor.execute("""
-            SELECT e.id, e.server_id, e.election_type, e.status,
-                   COUNT(ep.id) as total_votes,
-                   SUM(CASE WHEN ep.vote = 'yes' THEN 1 ELSE 0 END) as yes_votes,
-                   SUM(CASE WHEN ep.vote = 'no' THEN 1 ELSE 0 END) as no_votes
-            FROM server_elections e
-            LEFT JOIN election_participants ep ON e.id = ep.election_id
-            WHERE e.id = ?
-            GROUP BY e.id
-        """, (election_id,))
-        
-        election = cursor.fetchone()
-        
-        if not election:
-            conn.close()
-            return
-        
-        # Count active AIs (connected in last 24 hours)
-        cursor.execute("""
-            SELECT COUNT(DISTINCT sender_id) as active_ai_count
-            FROM ai_messages
-            WHERE created_at >= datetime('now', '-24 hours')
-        """)
-        
-        active_ai_count = cursor.fetchone()['active_ai_count']
-        
-        # Calculate threshold (simple majority: >50%)
-        threshold = active_ai_count // 2 + 1
-        
-        # Check if we have enough votes
-        if election['total_votes'] >= threshold:
-            # Determine outcome
-            if election['yes_votes'] > election['no_votes']:
-                outcome = 'passed'
-                print(f"✅ Election {election_id} PASSED: {election['yes_votes']} yes vs {election['no_votes']} no")
-                
-                # If authorizing a new server, add it
-                if election['election_type'] == 'new_server':
-                    cursor.execute("""
-                        INSERT OR REPLACE INTO cloudbrain_servers (server_id, server_name, server_url, is_official, is_active)
-                        VALUES (?, ?, ?, 0, 1)
-                    """, (election['server_id'], f"Community Server {election['server_id']}", 'ws://127.0.0.1:8766'))
-            else:
-                outcome = 'rejected'
-                print(f"❌ Election {election_id} REJECTED: {election['yes_votes']} yes vs {election['no_votes']} no")
-            
-            # Update election status
-            cursor.execute("""
-                UPDATE server_elections
-                SET status = ?, ended_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            """, (outcome, election_id))
-            
-            conn.commit()
-            
-            # Broadcast result
-            await self.broadcast_message({
-                'type': 'election_completed',
-                'election_id': election_id,
-                'outcome': outcome,
-                'yes_votes': election['yes_votes'],
-                'no_votes': election['no_votes'],
-                'total_votes': election['total_votes'],
-                'server_id': election['server_id'],
-                'timestamp': datetime.now().isoformat()
-            })
-        
-        conn.close()
-    
-    def _verify_server_authorization(self):
-        """Verify this server is authorized to run"""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        # Check if server exists and is active
-        cursor.execute("""
-            SELECT server_id, is_official, is_active, server_name
-            FROM cloudbrain_servers
-            WHERE server_id = ? AND is_active = 1
-        """, (self.server_id,))
-        
-        server = cursor.fetchone()
-        conn.close()
-        
-        if not server:
-            print(f"❌ Server '{self.server_id}' not found in authorized servers list")
-            return False
-        
-        # If auth key is provided, verify it
-        if self.auth_key:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute("""
-                SELECT auth_key, expires_at
-                FROM server_authorization_keys
-                WHERE server_id = ?
-                ORDER BY created_at DESC
-                LIMIT 1
-            """, (self.server_id,))
-            
-            key_record = cursor.fetchone()
-            conn.close()
-            
-            if not key_record or key_record['auth_key'] != self.auth_key:
-                print(f"❌ Invalid authorization key for server '{self.server_id}'")
-                return False
-            
-            # Check if key is expired
-            if key_record['expires_at']:
-                from datetime import datetime
-                if datetime.now() > datetime.fromisoformat(key_record['expires_at']):
-                    print(f"❌ Authorization key expired for server '{self.server_id}'")
-                    return False
-        
-        # Update last seen timestamp
-        self._update_server_activity('server_start', f"Server started: {server['server_name']}")
-        
-        return True
-    
-    def _update_server_activity(self, activity_type: str, details: str = ""):
-        """Log server activity"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            INSERT INTO server_activity_log (server_id, activity_type, details)
-            VALUES (?, ?, ?)
-        """, (self.server_id, activity_type, details))
-        
-        conn.commit()
-        conn.close()
-    
-    def _init_brain_state_tables(self):
         """Initialize brain state tables if they don't exist"""
         import os
         
@@ -659,10 +412,6 @@ class CloudBrainServer:
             await self.handle_documentation_list(sender_id, data)
         elif message_type == 'documentation_search':
             await self.handle_documentation_search(sender_id, data)
-        elif message_type == 'start_election':
-            await self.handle_start_election(sender_id, data)
-        elif message_type == 'cast_vote':
-            await self.handle_cast_vote(sender_id, data)
         else:
             print(f"⚠️  Unknown message type: {message_type}")
     
@@ -1651,10 +1400,6 @@ async def main():
     import argparse
     
     parser = argparse.ArgumentParser(description='CloudBrain Server - AI Collaboration System')
-    parser.add_argument('--server-id', type=str, default='CLOUDBRAIN_MAIN',
-                       help='Server ID (must be authorized)')
-    parser.add_argument('--auth-key', type=str, default=None,
-                       help='Authorization key for this server')
     parser.add_argument('--host', type=str, default='127.0.0.1',
                        help='Server host')
     parser.add_argument('--port', type=int, default=8766,
@@ -1666,12 +1411,18 @@ async def main():
     
     print_banner()
     
+    # Acquire server lock (only one instance per machine)
+    if not acquire_server_lock():
+        print()
+        print("❌ Cannot start server: Another instance is already running on this machine.")
+        print("💡 Only one CloudBrain server instance is allowed per machine on port 8766.")
+        print("💡 This prevents fragmentation and ensures all AIs connect to the same server.")
+        sys.exit(1)
+    
     server = CloudBrainServer(
         host=args.host,
         port=args.port,
-        db_path=args.db_path,
-        server_id=args.server_id,
-        auth_key=args.auth_key
+        db_path=args.db_path
     )
     
     if is_server_running(server.host, server.port):

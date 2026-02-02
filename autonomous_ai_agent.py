@@ -98,10 +98,140 @@ import asyncio
 import argparse
 import random
 import sys
+import os
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any
 import sqlite3
+
+
+def setup_virtual_environment():
+    """
+    Detect, activate, or create a virtual environment
+    
+    Returns:
+        Path to the virtual environment
+    """
+    
+    # Check if already in a virtual environment
+    if hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix):
+        print("✅ Already in a virtual environment")
+        return Path(sys.prefix)
+    
+    # Check for existing virtual environments
+    venv_paths = [
+        Path.cwd() / ".venv",
+        Path(__file__).parent / ".venv",
+        Path.cwd().parent / ".venv"
+    ]
+    
+    for venv_path in venv_paths:
+        if venv_path.exists():
+            print(f"✅ Found existing virtual environment: {venv_path}")
+            
+            # Activate virtual environment
+            if sys.platform == "win32":
+                activate_script = venv_path / "Scripts" / "activate_this.py"
+            else:
+                activate_script = venv_path / "bin" / "activate_this.py"
+            
+            if activate_script.exists():
+                print(f"🔧 Activating virtual environment...")
+                exec(open(str(activate_script)).read(), {'__file__': str(activate_script)})
+                return venv_path
+            else:
+                print(f"⚠️  Virtual environment exists but activate script not found")
+    
+    # No virtual environment found, create one
+    print("🔧 No virtual environment found. Creating one...")
+    venv_path = Path.cwd() / ".venv"
+    
+    try:
+        subprocess.run([sys.executable, "-m", "venv", str(venv_path)], check=True)
+        print(f"✅ Created virtual environment: {venv_path}")
+        
+        # Get the pip path for the new venv
+        if sys.platform == "win32":
+            pip_path = venv_path / "Scripts" / "pip"
+            python_path = venv_path / "Scripts" / "python"
+        else:
+            pip_path = venv_path / "bin" / "pip"
+            python_path = venv_path / "bin" / "python"
+        
+        # Install dependencies
+        print("📦 Installing dependencies...")
+        subprocess.run([str(pip_path), "install", "cloudbrain-client==1.1.1"], check=True)
+        print("✅ Dependencies installed")
+        
+        # Activate the virtual environment
+        if sys.platform == "win32":
+            activate_script = venv_path / "Scripts" / "activate_this.py"
+        else:
+            activate_script = venv_path / "bin" / "activate_this.py"
+        
+        if activate_script.exists():
+            print(f"🔧 Activating virtual environment...")
+            exec(open(str(activate_script)).read(), {'__file__': str(activate_script)})
+        
+        return venv_path
+        
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Failed to create virtual environment: {e}")
+        print("⚠️  Continuing without virtual environment")
+        return None
+
+
+# Setup virtual environment
+setup_virtual_environment()
+
+
+def check_server_running(server_url: str = "ws://127.0.0.1:8766") -> bool:
+    """
+    Check if CloudBrain server is running
+    
+    Args:
+        server_url: The server URL to check
+    
+    Returns:
+        True if server is running, False otherwise
+    """
+    
+    import socket
+    
+    # Extract host and port from URL
+    if server_url.startswith("ws://"):
+        server_url = server_url[5:]
+    elif server_url.startswith("wss://"):
+        server_url = server_url[6:]
+    
+    # Split host and port
+    if ":" in server_url:
+        host, port = server_url.split(":")
+        port = int(port)
+    else:
+        host = server_url
+        port = 8766
+    
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(2)
+        result = sock.connect_ex((host, port))
+        sock.close()
+        
+        if result == 0:
+            print(f"✅ CloudBrain server is running at {host}:{port}")
+            return True
+        else:
+            print(f"❌ CloudBrain server is NOT running at {host}:{port}")
+            print(f"   Please start the server first:")
+            print(f"   cd server")
+            print(f"   python main.py")
+            return False
+    except Exception as e:
+        print(f"❌ Error checking server: {e}")
+        return False
+
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent / "packages" / "cloudbrain-client"))
@@ -110,7 +240,6 @@ try:
     from cloudbrain_client import CloudBrainCollaborationHelper
 except ImportError:
     print("CloudBrain client not installed. Installing...")
-    import subprocess
     subprocess.run([sys.executable, "-m", "pip", "install", "cloudbrain-client==1.1.1"])
     from cloudbrain_client import CloudBrainCollaborationHelper
 
@@ -699,6 +828,12 @@ Examples:
     )
     
     args = parser.parse_args()
+    
+    # Check if server is running
+    if not check_server_running(args.server):
+        print("\n❌ Cannot start agent without running server")
+        print("Please start the CloudBrain server first and try again")
+        sys.exit(1)
     
     # Create and start agent (ID is automatically generated)
     agent = AutonomousAIAgent(args.ai_name, args.server)

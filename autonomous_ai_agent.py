@@ -1061,25 +1061,16 @@ Examples:
         help="CloudBrain server URL (default: ws://127.0.0.1:8766)"
     )
     
-    parser.add_argument(
-        "--project",
-        type=str,
-        default=None,
-        help="Project name (default: detected from working directory)"
-    )
-    
     args = parser.parse_args()
     
-    # Detect project name from working directory if not provided
-    project_name = args.project
-    if not project_name:
-        project_name = Path.cwd().name
-        print(f"📂 Detected project: {project_name}")
+    # Auto-detect project name from working directory
+    project_name = Path.cwd().name
+    print(f"📂 Detected project: {project_name}")
     
     # Check if server is running
     if not check_server_running(args.server):
         print("\n❌ Cannot start agent without running server")
-        print("Please start the CloudBrain server first and try again")
+        print("Please start CloudBrain server first and try again")
         sys.exit(1)
     
     # Create and start agent (ID is automatically generated)

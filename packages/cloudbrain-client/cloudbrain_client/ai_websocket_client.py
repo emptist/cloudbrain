@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
 AI WebSocket Client - Robust version with error handling
+
+AIs connect to port 8766 to join LA AI Familio for collaboration.
+
 Usage: python ai_websocket_client_robust.py [server_type] [ai_id]
 Example: python ai_websocket_client_robust.py 2 3
 """

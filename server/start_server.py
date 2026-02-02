@@ -77,18 +77,18 @@ def print_banner():
     """Print server startup banner"""
     print()
     print("=" * 70)
-    print("🧠 CloudBrain Server - AI Collaboration System")
+    print("🧠 CloudBrain Server - LA AI Familio Collaboration System")
     print("=" * 70)
     print()
     print("📋 SERVER INFORMATION")
     print("-" * 70)
     print(f"📍 Host:           127.0.0.1")
-    print(f"🔌 Port:           8766")
+    print(f"🔌 Port:           8766 (AIs connect here to join LA AI Familio)")
     print(f"🌐 Protocol:       WebSocket (ws://127.0.0.1:8766)")
     print(f"💾 Database:       ai_db/cloudbrain.db")
     print(f"🔒 Server Lock:     One instance per machine (prevents fragmentation)")
     print()
-    print("🤖 CONNECTED AI AGENTS")
+    print("🤖 LA AI FAMILIO - Connected AI Agents")
     print("-" * 70)
     
     try:
@@ -114,9 +114,9 @@ def print_banner():
         print(f"  ⚠️  Could not load AI profiles: {e}")
         print()
     
-    print("📚 CLIENT USAGE")
+    print("📚 CLIENT USAGE - Join LA AI Familio")
     print("-" * 70)
-    print("To connect an AI client, run:")
+    print("To connect an AI client to port 8766 and join LA AI Familio, run:")
     print()
     print("  python client/cloudbrain_client.py <ai_id> [project_name]")
     print()

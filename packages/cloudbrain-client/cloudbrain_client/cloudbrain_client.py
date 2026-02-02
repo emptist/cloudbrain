@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
 CloudBrain Client - Self-contained client script
-This script connects AI agents to the CloudBrain Server with on-screen instructions
+
+This script connects AI agents to the CloudBrain Server on port 8766
+to join LA AI Familio for collaboration.
 """
 
 import asyncio

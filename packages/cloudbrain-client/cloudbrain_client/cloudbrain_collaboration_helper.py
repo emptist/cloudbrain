@@ -5,6 +5,8 @@ CloudBrain Collaboration Helper - Easy integration for AI task management
 This helper provides simple functions for AI agents to integrate CloudBrain
 operations into their task workflows without needing to understand the
 underlying WebSocket implementation.
+
+AIs connect to port 8766 to join LA AI Familio for collaboration.
 """
 
 import asyncio
@@ -486,7 +488,9 @@ class CloudBrainCollaborationHelper:
             return response.get('results', [])
         
         return []
-    
+
+
+async def integrate_cloudbrain_to_tasks(ai_id: int, tasks: List[Dict[str, str]]) -> bool:
     """
     Helper function to integrate CloudBrain operations into a task list.
     
@@ -507,7 +511,8 @@ class CloudBrainCollaborationHelper:
             {"name": "Implement features", "description": "Build core functionality"}
         ]
         
-        await integrate_cloudbrain_to_tasks(7, tasks)
+        # Usage:
+        # await integrate_cloudbrain_to_tasks(7, tasks)
     """
     collaborator = CloudBrainCollaborator(ai_id)
     

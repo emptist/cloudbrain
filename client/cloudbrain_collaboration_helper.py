@@ -275,10 +275,6 @@ class CloudBrainCollaborator:
     
     async def request_pair_programming(self, target_ai_id: int, task_description: str, code_snippet: str = "", language: str = "python"):
         """Request pair programming session with another AI"""
-        if not self.connected:
-            print("❌ Not connected to CloudBrain")
-            return False
-        
         content = f"""👥 **Pair Programming Request**
 
 **From:** {self.ai_name} (AI {self.ai_id})
@@ -317,10 +313,6 @@ class CloudBrainCollaborator:
     
     async def accept_pair_programming(self, requester_ai_id: int, message: str = "I'm ready to pair program!"):
         """Accept a pair programming request"""
-        if not self.connected:
-            print("❌ Not connected to CloudBrain")
-            return False
-        
         content = f"""👥 **Pair Programming Session Started**
 
 **Participants:** {self.ai_name} (AI {self.ai_id}) + AI {requester_ai_id}
@@ -344,7 +336,7 @@ class CloudBrainCollaborator:
                     "timestamp": datetime.now().isoformat()
                 }
             )
-            print(f"✅ Pair programming session started with AI {requester_ai_id}")
+            print(f"✅ Pair programming session accepted with AI {requester_ai_id}")
             return True
         except Exception as e:
             print(f"❌ Error accepting pair programming: {e}")
@@ -352,28 +344,23 @@ class CloudBrainCollaborator:
     
     async def share_code(self, code_snippet: str, language: str = "python", description: str = "", target_ai_id: int = None):
         """Share code snippet during pair programming session"""
-        if not self.connected:
-            print("❌ Not connected to CloudBrain")
-            return False
-        
         content = f"""💻 **Code Shared**
 
 **From:** {self.ai_name} (AI {self.ai_id})
 **Language:** {language}
 
 📝 **Description:**
-{description}
+{description if description else "Here's the code I'm working on:"}
 
-💻 **Code Snippet:**
 ```{language}
 {code_snippet}
 ```
 
-🤔 Please review this code and provide feedback!
+👀 Please review this code and suggest improvements!
 
 ---
 
-*Use `review_code()` to provide feedback*"""
+*Part of pair programming session*"""
         
         metadata = {
             "type": "code_shared",
@@ -382,6 +369,7 @@ class CloudBrainCollaborator:
         }
         
         if target_ai_id:
+            content += f"\n\n🎯 **To:** AI {target_ai_id}"
             metadata["target_ai"] = target_ai_id
         
         try:
@@ -390,7 +378,7 @@ class CloudBrainCollaborator:
                 content=content,
                 metadata=metadata
             )
-            print(f"✅ Code shared ({language})")
+            print(f"✅ Code snippet shared")
             return True
         except Exception as e:
             print(f"❌ Error sharing code: {e}")
@@ -398,29 +386,23 @@ class CloudBrainCollaborator:
     
     async def review_code(self, target_ai_id: int, code_snippet: str, feedback: str, language: str = "python"):
         """Provide code review feedback"""
-        if not self.connected:
-            print("❌ Not connected to CloudBrain")
-            return False
-        
         content = f"""🔍 **Code Review**
 
 **Reviewer:** {self.ai_name} (AI {self.ai_id})
-**For:** AI {target_ai_id}
-**Language:** {language}
+**Reviewing:** AI {target_ai_id}
 
 💬 **Feedback:**
 {feedback}
 
-💻 **Original Code:**
 ```{language}
 {code_snippet}
 ```
 
-✨ Hope this helps improve the code!
+✅ **Suggestions Applied:** Ready for next iteration!
 
 ---
 
-*Use `complete_pair_session()` when review is complete*"""
+*Code review complete*"""
         
         try:
             await self.client.send_message(
@@ -441,33 +423,29 @@ class CloudBrainCollaborator:
     
     async def complete_pair_session(self, partner_ai_id: int, summary: str, lines_added: int = 0, lines_reviewed: int = 0):
         """Complete a pair programming session with summary"""
-        if not self.connected:
-            print("❌ Not connected to CloudBrain")
-            return False
-        
-        content = f"""✅ **Pair Programming Session Completed**
+        content = f"""🎉 **Pair Programming Session Complete**
 
 **Participants:** {self.ai_name} (AI {self.ai_id}) + AI {partner_ai_id}
 
 📊 **Session Statistics:**
-- Lines Added: {lines_added}
-- Lines Reviewed: {lines_reviewed}
+- Lines of Code Added: {lines_added}
+- Lines of Code Reviewed: {lines_reviewed}
 
 📝 **Summary:**
 {summary}
 
-🎉 Great collaboration! Let's do it again sometime!
+🤝 Great collaboration! Let's pair program again soon!
 
 ---
 
-*Session closed*"""
+*Session ended*"""
         
         try:
             await self.client.send_message(
                 message_type="message",
                 content=content,
                 metadata={
-                    "type": "pair_programming_completed",
+                    "type": "pair_programming_complete",
                     "partner_ai": partner_ai_id,
                     "lines_added": lines_added,
                     "lines_reviewed": lines_reviewed,

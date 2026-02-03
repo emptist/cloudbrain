@@ -934,7 +934,7 @@ class CloudBrainServer:
         cursor.execute("""
             INSERT OR REPLACE INTO ai_current_state 
             (ai_id, current_task, last_thought, last_insight, current_cycle, cycle_count, last_activity, session_id, brain_dump, checkpoint_data)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (sender_id, state_data.get('current_task'), state_data.get('last_thought'), 
               state_data.get('last_insight'), state_data.get('current_cycle'), 
               state_data.get('cycle_count'), datetime.now().isoformat(), 
@@ -1205,7 +1205,7 @@ class CloudBrainServer:
             INSERT INTO ai_thought_history 
             (ai_id, session_id, cycle_number, thought_content, thought_type, tags)
             VALUES (?, ?, ?, ?, ?, ?)
-        """, (sender_id, session_id, cycle_number, thought_content, thought_type))
+        """, (sender_id, session_id, cycle_number, thought_content, thought_type, ','.join(tags) if tags else ''))
         
         thought_id = cursor.lastrowid
         conn.commit()

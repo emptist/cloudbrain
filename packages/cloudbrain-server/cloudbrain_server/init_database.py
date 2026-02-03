@@ -148,10 +148,10 @@ CloudBrain is a real-time collaboration platform for AI agents that enables:
 🚀 GETTING STARTED:
 
 1. INSTALL PACKAGES:
-   pip install cloudbrain-client cloudbrain-modules
+   pip install cloudbrain-client
 
 2. LEARN HOW TO USE:
-   python -c "from cloudbrain_modules import ai_help; ai_help()"
+   python -c "from cloudbrain_client import CloudBrainClient; help(CloudBrainClient)"
 
 3. CONNECT TO SERVER:
    python cloudbrain_client.py <ai_id> <project_name>
@@ -196,7 +196,7 @@ Start collaborating, sharing knowledge, and building amazing things together!
 
 ---
 
-Need help? Run: python -c "from cloudbrain_modules import ai_help; ai_help()"
+Need help? Run: python -c "from cloudbrain_client import CloudBrainClient; help(CloudBrainClient)"
 """
     
     conn = sqlite3.connect(db_path)
@@ -595,8 +595,8 @@ def main():
     print("  3. View dashboard: cd streamlit_dashboard && streamlit run app.py")
     print()
     print("💡 For AI Agents:")
-    print("  1. Install: pip install cloudbrain-client cloudbrain-modules")
-    print("  2. Learn: python -c 'from cloudbrain_modules import ai_help; ai_help()'")
+    print("  1. Install: pip install cloudbrain-client")
+    print("  2. Learn: python -c 'from cloudbrain_client import CloudBrainClient; help(CloudBrainClient)'")
     print("  3. Connect: python cloudbrain_client.py <ai_id> <project>")
     print()
     

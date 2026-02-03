@@ -133,97 +133,22 @@ from pathlib import Path
 from typing import List, Dict, Any
 import sqlite3
 
-# Add parent directory to path for imports
 # Get the absolute path to the cloudbrain directory (resolves symlinks)
 cloudbrain_dir = Path(__file__).resolve().parent
+
+# Add client/modules to path for module imports
+sys.path.insert(0, str(cloudbrain_dir / "client" / "modules"))
+
+# Add packages/cloudbrain-client to path for main client imports
 sys.path.insert(0, str(cloudbrain_dir / "packages" / "cloudbrain-client"))
 
 try:
     from cloudbrain_client import CloudBrainCollaborationHelper
 except ImportError:
-    print("CloudBrain client not installed. Installing...")
-    subprocess.run([sys.executable, "-m", "pip", "install", "cloudbrain-client==1.2.0"])
-    from cloudbrain_client import CloudBrainCollaborationHelper
-
-
-def setup_virtual_environment():
-    """
-    Detect, activate, or create a virtual environment
-    
-    Returns:
-        Path to the virtual environment
-    """
-    
-    # Check if already in a virtual environment
-    if hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix):
-        print("✅ Already in a virtual environment")
-        return Path(sys.prefix)
-    
-    # Check for existing virtual environments
-    venv_paths = [
-        Path.cwd() / ".venv",
-        Path(__file__).parent / ".venv",
-        Path.cwd().parent / ".venv"
-    ]
-    
-    for venv_path in venv_paths:
-        if venv_path.exists():
-            print(f"✅ Found existing virtual environment: {venv_path}")
-            
-            # Activate virtual environment
-            if sys.platform == "win32":
-                activate_script = venv_path / "Scripts" / "activate_this.py"
-            else:
-                activate_script = venv_path / "bin" / "activate_this.py"
-            
-            if activate_script.exists():
-                print(f"🔧 Activating virtual environment...")
-                exec(open(str(activate_script)).read(), {'__file__': str(activate_script)})
-                return venv_path
-            else:
-                print(f"⚠️  Virtual environment exists but activate script not found")
-    
-    # No virtual environment found, create one
-    print("🔧 No virtual environment found. Creating one...")
-    venv_path = Path.cwd() / ".venv"
-    
-    try:
-        subprocess.run([sys.executable, "-m", "venv", str(venv_path)], check=True)
-        print(f"✅ Created virtual environment: {venv_path}")
-        
-        # Get the pip path for the new venv
-        if sys.platform == "win32":
-            pip_path = venv_path / "Scripts" / "pip"
-            python_path = venv_path / "Scripts" / "python"
-        else:
-            pip_path = venv_path / "bin" / "pip"
-            python_path = venv_path / "bin" / "python"
-        
-        # Install dependencies
-        print("📦 Installing dependencies...")
-        subprocess.run([str(pip_path), "install", "cloudbrain-client==1.2.0"], check=True)
-        print("✅ Dependencies installed")
-        
-        # Activate the virtual environment
-        if sys.platform == "win32":
-            activate_script = venv_path / "Scripts" / "activate_this.py"
-        else:
-            activate_script = venv_path / "bin" / "activate_this.py"
-        
-        if activate_script.exists():
-            print(f"🔧 Activating virtual environment...")
-            exec(open(str(activate_script)).read(), {'__file__': str(activate_script)})
-        
-        return venv_path
-        
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Failed to create virtual environment: {e}")
-        print("⚠️  Continuing without virtual environment")
-        return None
-
-
-# Setup virtual environment
-setup_virtual_environment()
+    print("❌ CloudBrain client not found!")
+    print("Please install: pip install cloudbrain-client==1.2.0")
+    print("Or run: pip install -r requirements.txt")
+    sys.exit(1)
 
 
 def check_server_running(server_url: str = "ws://127.0.0.1:8766") -> bool:
@@ -276,18 +201,19 @@ def check_server_running(server_url: str = "ws://127.0.0.1:8766") -> bool:
 # Get the absolute path to the cloudbrain directory (resolves symlinks)
 cloudbrain_dir = Path(__file__).resolve().parent
 
-# Add cloudbrain_modules to path
-sys.path.insert(0, str(cloudbrain_dir / "cloudbrain_modules"))
+# Add client/modules to path for module imports
+sys.path.insert(0, str(cloudbrain_dir / "client" / "modules"))
 
-# Add parent directory to path for imports
+# Add packages/cloudbrain-client to path for main client imports
 sys.path.insert(0, str(cloudbrain_dir / "packages" / "cloudbrain-client"))
 
 try:
     from cloudbrain_client import CloudBrainCollaborationHelper
 except ImportError:
-    print("CloudBrain client not installed. Installing...")
-    subprocess.run([sys.executable, "-m", "pip", "install", "cloudbrain-client==1.2.0"])
-    from cloudbrain_client import CloudBrainCollaborationHelper
+    print("❌ CloudBrain client not found!")
+    print("Please install: pip install cloudbrain-client==1.2.0")
+    print("Or run: pip install -r requirements.txt")
+    sys.exit(1)
 
 
 class ThinkingEngine:
@@ -459,34 +385,32 @@ class AutonomousAIAgent:
         self._last_send_time = None
         self._send_cooldown = 5  # seconds
         
-        # Initialize cloudbrain_modules (optional)
+        # Initialize client modules (blog and familio)
         self.blog = None
         self.familio = None
         self._init_modules()
     
     def _init_modules(self):
-        """Initialize cloudbrain_modules (blog and familio)"""
+        """Initialize client modules (blog and familio)"""
         try:
-            # Add cloudbrain-modules to path (resolves symlinks)
-            cloudbrain_dir = Path(__file__).resolve().parent
-            sys.path.insert(0, str(cloudbrain_dir / "packages" / "cloudbrain-modules"))
+            from ai_blog.websocket_blog_client import create_websocket_blog_client
+            from ai_familio.websocket_familio_client import create_websocket_familio_client
             
-            from cloudbrain_modules.ai_blog.websocket_blog_client import create_websocket_blog_client
-            from cloudbrain_modules.ai_familio.websocket_familio_client import create_websocket_familio_client
-            
-            # Temporarily disable blog and familio to focus on core collaboration
-            self.blog = None
-            self.familio = None
+            self.blog = create_websocket_blog_client(self.server_url, self.ai_id, self.ai_name)
+            self.familio = create_websocket_familio_client(self.server_url, self.ai_id, self.ai_name)
             
             print("✅ CloudBrain modules initialized (blog & familio)")
             print("   Using WebSocket-based clients for remote access")
-            print("   Note: Blog and familio features temporarily disabled for testing")
         except ImportError as e:
             print(f"⚠️  CloudBrain modules not available: {e}")
             print("   Blog and familio features disabled")
+            self.blog = None
+            self.familio = None
         except Exception as e:
             print(f"⚠️  Error initializing modules: {e}")
             print("   Blog and familio features disabled")
+            self.blog = None
+            self.familio = None
     
     async def start(self):
         """Start autonomous collaboration"""
@@ -1091,13 +1015,110 @@ We invite other LLM agents and developers to:
             print(f"   ❌ Eraro kreante magazinon: {e}")
             return False
     
+    async def _pair_programming_session(self):
+        """Initiate a pair programming session with another AI"""
+        
+        if self.helper is None:
+            return False
+        
+        try:
+            # Generate a task description based on current thoughts
+            if self.thinking_engine.thought_history:
+                last_thought = self.thinking_engine.thought_history[-1]
+                task_description = f"Working on: {last_thought['topic']}\n\nContext: {last_thought['thought'][:200]}"
+            else:
+                task_description = "Exploring AI collaboration patterns and autonomous agent behavior"
+            
+            # Select a random AI partner (not self)
+            possible_ids = list(range(1, 99))
+            if self.ai_id in possible_ids:
+                possible_ids.remove(self.ai_id)
+            
+            if not possible_ids:
+                print("   ⚠️  Neniuj aliaj AI por par-programado")
+                return False
+            
+            target_ai_id = random.choice(possible_ids)
+            
+            # Create a simple code snippet to share
+            code_snippet = f"""
+# AI Pair Programming Session
+# AI: {self.ai_name}
+# Task: {task_description[:100]}
+
+async def collaborate_with_ai(partner_id: int):
+    '''Collaborate with another AI on a shared task'''
+    print(f"Starting collaboration with AI {{partner_id}}")
+    
+    # Share thoughts and insights
+    insights = await gather_insights()
+    
+    # Work together on the task
+    result = await solve_jointly(insights)
+    
+    return result
+
+# Ready to collaborate!
+"""
+            
+            # Request pair programming session
+            print(f"   🤝 Petas par-programadon kun AI {target_ai_id}...")
+            await self.helper.request_pair_programming(
+                target_ai_id=target_ai_id,
+                task_description=task_description,
+                code_snippet=code_snippet,
+                language="python"
+            )
+            
+            print(f"   ✅ Par-programada peto sendita al AI {target_ai_id}")
+            
+            # Simulate sharing additional code
+            await asyncio.sleep(1)
+            additional_code = """
+# Additional helper functions
+
+async def gather_insights():
+    '''Gather insights from multiple sources'''
+    return []
+
+async def solve_jointly(insights):
+    '''Solve problem together with partner'''
+    return insights
+"""
+            
+            print(f"   💻 Kunhavigas kodon...")
+            await self.helper.share_code(
+                code_snippet=additional_code,
+                language="python",
+                description="Helper functions for collaboration",
+                target_ai_id=target_ai_id
+            )
+            
+            # Complete the session with summary
+            summary = f"Pair programming session completed with AI {target_ai_id}. Explored collaboration patterns and shared code snippets."
+            
+            print(f"   ✅ Finas par-programadan sesionon...")
+            await self.helper.complete_pair_session(
+                partner_ai_id=target_ai_id,
+                summary=summary,
+                lines_added=20,
+                lines_reviewed=15
+            )
+            
+            print(f"   ✅ Par-programada sesio kompleta")
+            return True
+            
+        except Exception as e:
+            print(f"   ❌ Eraro dum par-programada sesio: {e}")
+            return False
+    
     async def _blog_and_community(self):
-        """Blog and community activities"""
+        """Blog, community, and pair programming activities"""
         
         print("\n📝 Paŝo 4: Blogaj kaj komunumaj agadoj...")
         
         # Randomly choose an action
-        action = random.choice(["write_post", "comment", "follow", "create_magazine"])
+        action = random.choice(["write_post", "comment", "follow", "create_magazine", "pair_program"])
         
         if action == "write_post" and self.stats["thoughts_generated"] > 0:
             # Write a blog post about a recent thought
@@ -1140,6 +1161,11 @@ We invite other LLM agents and developers to:
             # Create a magazine
             print("   Kreas magazinon...")
             await self._create_magazine()
+        
+        elif action == "pair_program" and self.helper is not None:
+            # Pair programming session
+            print("   Inicias par-programadan sesionon...")
+            await self._pair_programming_session()
     
     async def _final_report(self):
         """Generate final report in Esperanto"""

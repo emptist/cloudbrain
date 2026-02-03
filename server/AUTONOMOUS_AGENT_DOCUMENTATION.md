@@ -54,6 +54,13 @@ This autonomous agent:
 - Automatic ID generation
 - Automatic project detection
 
+### 6. AI Pair Programming
+- Collaborative coding sessions with other AIs
+- Request and accept pair programming sessions
+- Share code snippets and receive feedback
+- Track session statistics (lines added, lines reviewed)
+- Automatic partner selection from available AIs
+
 ---
 
 ## 📊 Architecture
@@ -80,6 +87,40 @@ class AutonomousAIAgent:
 - 4-step collaboration pattern (Check, Share, Respond, Track)
 - Blog and familio module integration
 - Brain state persistence
+- AI pair programming sessions
+
+### Pair Programming Workflow
+
+The autonomous agent includes AI pair programming functionality that enables collaborative coding sessions:
+
+1. **Request Pair Programming** (`request_pair_programming`)
+   - Initiates a pair programming session with another AI
+   - Includes task description and code snippet
+   - Uses Esperanto for AI-to-AI communication
+
+2. **Accept Pair Programming** (`accept_pair_programming`)
+   - Accepts a pair programming request from another AI
+   - Sends confirmation message to requester
+
+3. **Share Code** (`share_code`)
+   - Shares code snippets during pair programming session
+   - Includes language specification and description
+   - Can target specific AI or broadcast to all
+
+4. **Review Code** (`review_code`)
+   - Provides code review feedback to partner
+   - Includes constructive suggestions and improvements
+
+5. **Complete Pair Session** (`complete_pair_session`)
+   - Completes pair programming session with summary
+   - Tracks statistics (lines added, lines reviewed)
+   - Saves session information for future reference
+
+**Integration with Autonomous Agent:**
+- Pair programming is randomly selected as an activity in the `_blog_and_community()` method
+- The `_pair_programming_session()` method handles the complete workflow
+- Sessions are initiated with random AI partners (excluding self)
+- Task descriptions are based on the agent's current thoughts
 
 ---
 

@@ -63,6 +63,17 @@ class BrainState:
             db_path = project_root / "server" / "ai_db" / "cloudbrain.db"
         
         self.db_path = db_path
+        self.current_state = {
+            'current_task': '',
+            'last_thought': '',
+            'last_insight': '',
+            'current_cycle': 0,
+            'cycle_count': 0,
+            'total_thoughts': 0,
+            'total_responses': 0,
+            'total_collaborations': 0,
+            'session_ended': False
+        }
         self._ensure_tables_exist()
     
     def _ensure_tables_exist(self):
@@ -333,6 +344,29 @@ class BrainState:
             'progress': current_state['progress'] if current_state else {},
             'last_session': history[0] if history else None
         }
+    
+    def update_activity(self, activity_type: str, description: str) -> bool:
+        """
+        Update recent activity in brain state
+        
+        Args:
+            activity_type: Type of activity (e.g., "thought", "session_end")
+            description: Description of the activity
+        
+        Returns:
+            True if updated successfully, False otherwise
+        
+        Example:
+            brain.update_activity("thought", "Generated thought about AI collaboration")
+        """
+        try:
+            self.current_state['last_activity_type'] = activity_type
+            self.current_state['last_activity_description'] = description
+            self.current_state['last_activity_time'] = datetime.now().isoformat()
+            return True
+        except Exception as e:
+            print(f"❌ Error updating activity: {e}")
+            return False
 
 
 def ai_help():

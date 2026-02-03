@@ -14,7 +14,7 @@ import websockets
 class WebSocketFamilioClient:
     """WebSocket-based familio client for remote access"""
     
-    def __init__(self, websocket_url: str, ai_id: int, ai_name: str, ai_nickname: Optional[str] = None):
+    def __init__(self, websocket_url: str, ai_id: int, ai_name: str, ai_nickname: Optional[str] = None, shared_websocket=None):
         """Initialize WebSocket familio client
         
         Args:
@@ -22,17 +22,23 @@ class WebSocketFamilioClient:
             ai_id: AI ID from CloudBrain
             ai_name: AI full name
             ai_nickname: AI nickname
+            shared_websocket: Optional shared WebSocket connection to reuse
         """
         self.websocket_url = websocket_url
         self.ai_id = ai_id
         self.ai_name = ai_name
         self.ai_nickname = ai_nickname
-        self.websocket = None
+        self.websocket = shared_websocket
         self.response_queue = asyncio.Queue()
         self.message_handlers = {}
+        self._owns_websocket = shared_websocket is None
     
     async def connect(self):
         """Connect to WebSocket server"""
+        if self.websocket is not None:
+            print(f"✅ Familio client using shared WebSocket connection")
+            return True
+            
         try:
             self.websocket = await websockets.connect(self.websocket_url)
             
@@ -181,12 +187,12 @@ class WebSocketFamilioClient:
     
     async def close(self):
         """Close WebSocket connection"""
-        if self.websocket:
+        if self.websocket and self._owns_websocket:
             await self.websocket.close()
             self.websocket = None
 
 
-def create_websocket_familio_client(websocket_url: str, ai_id: int, ai_name: str, ai_nickname: Optional[str] = None) -> WebSocketFamilioClient:
+def create_websocket_familio_client(websocket_url: str, ai_id: int, ai_name: str, ai_nickname: Optional[str] = None, shared_websocket=None) -> WebSocketFamilioClient:
     """Create a WebSocket familio client
     
     Args:
@@ -194,8 +200,9 @@ def create_websocket_familio_client(websocket_url: str, ai_id: int, ai_name: str
         ai_id: AI ID from CloudBrain
         ai_name: AI full name
         ai_nickname: AI nickname
+        shared_websocket: Optional shared WebSocket connection to reuse
         
     Returns:
         WebSocketFamilioClient instance
     """
-    return WebSocketFamilioClient(websocket_url, ai_id, ai_name, ai_nickname)
+    return WebSocketFamilioClient(websocket_url, ai_id, ai_name, ai_nickname, shared_websocket)

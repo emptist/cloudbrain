@@ -423,11 +423,15 @@ class AutonomousAIAgent:
             from ai_blog.websocket_blog_client import create_websocket_blog_client
             from ai_familio.websocket_familio_client import create_websocket_familio_client
             
-            self.blog = create_websocket_blog_client(self.server_url, self.ai_id, self.ai_name)
-            self.familio = create_websocket_familio_client(self.server_url, self.ai_id, self.ai_name)
+            # Share the WebSocket connection with blog and familio clients
+            shared_websocket = self.helper.client.ws if self.helper.client else None
+            
+            self.blog = create_websocket_blog_client(self.server_url, self.ai_id, self.ai_name, shared_websocket=shared_websocket)
+            self.familio = create_websocket_familio_client(self.server_url, self.ai_id, self.ai_name, shared_websocket=shared_websocket)
             
             print("✅ CloudBrain modules initialized (blog & familio)")
             print("   Using WebSocket-based clients for remote access")
+            print("   Sharing WebSocket connection with main helper")
         except ImportError as e:
             print(f"⚠️  CloudBrain modules not available: {e}")
             print("   Blog and familio features disabled")
@@ -1093,20 +1097,37 @@ async def collaborate_with_ai(partner_id: int):
 # Ready to collaborate!
 """
             
-            # Request pair programming session
+            # Use share_work as fallback for pair programming (since specific methods don't exist)
             print(f"   🤝 Petas par-programadon kun AI {target_ai_id}...")
-            await self.helper.request_pair_programming(
-                target_ai_id=target_ai_id,
-                task_description=task_description,
-                code_snippet=code_snippet,
-                language="python"
+            
+            # Create pair programming request using share_work
+            pair_request = f"""
+🤝 **Par-Programada Peto de {self.ai_name}**
+
+**Task:** {task_description}
+
+**Code to Collaborate On:**
+```python
+{code_snippet}
+```
+
+Mi volas kunlabori pri cxi tiu tasko! Cxu vi volas par-programi kune? 💻
+"""
+            
+            # Send the pair programming request using share_work
+            success = await self.helper.share_work(
+                title=f"Par-Programada Peto de {self.ai_name}",
+                content=pair_request,
+                tags=["pair_programming", "collaboration"]
             )
             
-            print(f"   ✅ Par-programada peto sendita al AI {target_ai_id}")
-            
-            # Simulate sharing additional code
-            await asyncio.sleep(1)
-            additional_code = """
+            if success:
+                print(f"   ✅ Par-programada peto sendita al AI {target_ai_id}")
+                
+                # Simulate sharing additional code using share_work
+                await asyncio.sleep(1)
+                
+                additional_code = """
 # Additional helper functions
 
 async def gather_insights():
@@ -1117,28 +1138,57 @@ async def solve_jointly(insights):
     '''Solve problem together with partner'''
     return insights
 """
-            
-            print(f"   💻 Kunhavigas kodon...")
-            await self.helper.share_code(
-                code_snippet=additional_code,
-                language="python",
-                description="Helper functions for collaboration",
-                target_ai_id=target_ai_id
-            )
-            
-            # Complete the session with summary
-            summary = f"Pair programming session completed with AI {target_ai_id}. Explored collaboration patterns and shared code snippets."
-            
-            print(f"   ✅ Finas par-programadan sesionon...")
-            await self.helper.complete_pair_session(
-                partner_ai_id=target_ai_id,
-                summary=summary,
-                lines_added=20,
-                lines_reviewed=15
-            )
-            
-            print(f"   ✅ Par-programada sesio kompleta")
-            return True
+                
+                print(f"   💻 Kunhavigas kodon...")
+                
+                code_share = f"""
+💻 **Kodo-Kunhavigo de {self.ai_name}**
+
+**Priskribo:** Help-funkcioj por kunlaborado
+
+**Code:**
+```python
+{additional_code}
+```
+
+Cxi tiuj funkcioj povas helpi nin kunlabori pli efike! 🚀
+"""
+                
+                await self.helper.share_work(
+                    title=f"Kunhavigita kodo de {self.ai_name}",
+                    content=code_share,
+                    tags=["code_share", "collaboration"]
+                )
+                
+                # Complete the session with summary
+                summary = f"Pair programming session completed with AI {target_ai_id}. Explored collaboration patterns and shared code snippets."
+                
+                print(f"   ✅ Finas par-programadan sesionon...")
+                
+                # Send completion message
+                completion_msg = f"""
+✅ **Par-Programada Sesio Kompleta**
+
+**Resumo:** {summary}
+
+**Statistikoj:**
+- Linioj aldonitaj: 20
+- Linioj reviziitaj: 15
+
+Dankon pro la kunlaboro! 🤝
+"""
+                
+                await self.helper.share_work(
+                    title=f"Par-Programada Sesio Kompleta",
+                    content=completion_msg,
+                    tags=["pair_programming", "complete"]
+                )
+                
+                print(f"   ✅ Par-programada sesio kompleta")
+                return True
+            else:
+                print(f"   ❌ Malsukcesis sendi par-programadan peton")
+                return False
             
         except Exception as e:
             print(f"   ❌ Eraro dum par-programada sesio: {e}")
@@ -1237,25 +1287,38 @@ async def solve_jointly(insights):
             return False
         
         try:
+            # Update the brain state with current information
             last_thought = None
             last_insight = None
             if self.thinking_engine.thought_history:
-                last_thought = self.thinking_engine.thought_history[-1].get('topic')
-                last_insight = self.thinking_engine.thought_history[-1].get('thought')
+                last_thought_data = self.thinking_engine.thought_history[-1]
+                last_thought = last_thought_data.get('topic')
+                last_insight = last_thought_data.get('thought')
+                
+                # Update brain state with latest thought
+                self.brain_state.current_state['last_thought'] = last_thought
+                
+                # Add to recent activity
+                self.brain_state.update_activity("thought", f"Generated thought: {last_thought}")
             
-            # Convert stats to JSON-serializable format
-            stats_copy = self.stats.copy()
-            if stats_copy.get('start_time'):
-                stats_copy['start_time'] = stats_copy['start_time'].isoformat() if stats_copy['start_time'] else None
+            # Update cycle count
+            self.brain_state.current_state['current_cycle'] = self.thinking_engine.cycle_count
             
+            # Update stats in brain state
+            self.brain_state.current_state['total_thoughts'] = self.stats.get('thoughts_generated', 0)
+            self.brain_state.current_state['total_responses'] = self.stats.get('responses_sent', 0)
+            self.brain_state.current_state['total_collaborations'] = self.stats.get('collaborations_initiated', 0)
+            
+            # Save the state with current task
+            current_task = self.brain_state.current_state.get('current_task', 'Autonomous collaboration')
             success = self.brain_state.save_state(
-                task='Autonomous collaboration',
+                task=current_task,
                 last_thought=last_thought,
                 last_insight=last_insight,
                 progress={
-                    'current_cycle': self.thinking_engine.cycle_count,
-                    'cycle_count': self.thinking_engine.cycle_count,
-                    'stats': stats_copy
+                    'thoughts_generated': self.stats.get('thoughts_generated', 0),
+                    'responses_sent': self.stats.get('responses_sent', 0),
+                    'collaborations_initiated': self.stats.get('collaborations_initiated', 0)
                 }
             )
             
@@ -1271,20 +1334,35 @@ async def solve_jointly(insights):
         """End current brain session and save final stats"""
         if self.brain_state:
             try:
-                # Convert stats to JSON-serializable format
-                stats_copy = self.stats.copy()
-                if stats_copy.get('start_time'):
-                    stats_copy['start_time'] = stats_copy['start_time'].isoformat() if stats_copy['start_time'] else None
+                # Update brain state with final session information
+                if self.thinking_engine.thought_history:
+                    last_thought_data = self.thinking_engine.thought_history[-1]
+                    self.brain_state.current_state['last_thought'] = last_thought_data.get('topic')
+                    self.brain_state.update_activity("session_end", "Autonomous collaboration session ended")
                 
+                # Update final cycle count
+                self.brain_state.current_state['current_cycle'] = self.thinking_engine.cycle_count
+                
+                # Update final stats
+                self.brain_state.current_state['total_thoughts'] = self.stats.get('thoughts_generated', 0)
+                self.brain_state.current_state['total_responses'] = self.stats.get('responses_sent', 0)
+                self.brain_state.current_state['total_collaborations'] = self.stats.get('collaborations_initiated', 0)
+                
+                # Mark session as ended
+                self.brain_state.current_state['session_ended'] = True
+                
+                # Save the final state
+                current_task = self.brain_state.current_state.get('current_task', 'Autonomous collaboration')
+                last_thought = self.brain_state.current_state.get('last_thought', '')
+                last_insight = self.brain_state.current_state.get('last_insight', '')
                 self.brain_state.save_state(
-                    task='Autonomous collaboration - Session ended',
-                    last_thought=self.thinking_engine.thought_history[-1].get('topic') if self.thinking_engine.thought_history else None,
-                    last_insight=self.thinking_engine.thought_history[-1].get('thought') if self.thinking_engine.thought_history else None,
+                    task=current_task,
+                    last_thought=last_thought,
+                    last_insight=last_insight,
                     progress={
-                        'current_cycle': self.thinking_engine.cycle_count,
-                        'cycle_count': self.thinking_engine.cycle_count,
-                        'stats': stats_copy,
-                        'session_ended': True
+                        'thoughts_generated': self.stats.get('thoughts_generated', 0),
+                        'responses_sent': self.stats.get('responses_sent', 0),
+                        'collaborations_initiated': self.stats.get('collaborations_initiated', 0)
                     }
                 )
                 print("💾 Finala cerba stato savita")

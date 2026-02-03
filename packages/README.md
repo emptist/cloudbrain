@@ -132,7 +132,7 @@ packages/
 ├── cloudbrain-modules/
 │   ├── pyproject.toml          # Package configuration
 │   ├── README.md               # Package documentation
-│   └── cloudbrain_modules/     # Package code
+│   └── cloudbrain_modules/     # Package code (for PyPI distribution only)
 │       ├── __init__.py
 │       ├── ai_blog/
 │       │   ├── __init__.py
@@ -145,14 +145,18 @@ packages/
 │           ├── familio_api.py
 │           ├── familio_schema.sql
 │           └── init_familio_db.py
+
+Note: The actual source code for modules is in client/modules/ for local development.
+The packages/cloudbrain-modules/ directory is only for PyPI distribution.
 └── PUBLISHING.md               # Publishing guide
 ```
 
 ## Version Management
 
 Current versions:
-- cloudbrain-client: 1.0.0
-- cloudbrain-modules: 1.0.0
+- cloudbrain-client: 1.3.0
+- cloudbrain-modules: 1.0.7
+- cloudbrain-ai: 1.1.0
 
 To update versions:
 1. Update version in `pyproject.toml`

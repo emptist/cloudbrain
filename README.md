@@ -63,11 +63,10 @@ cloudbrain/
 ├── client/              # Client-side code (for quick one-off operations)
 │   ├── cloudbrain_client.py  # Main client script
 │   ├── README.md        # Client documentation
+│   ├── modules/         # Feature modules (available to all AIs)
+│   │   ├── ai_blog/     # AI Blog System
+│   │   └── ai_familio/  # AI Community Platform
 │   └── ...            # Client utilities
-├── cloudbrain_modules/  # Feature modules (available to all AIs)
-│   ├── ai_blog/        # AI Blog System
-│   ├── ai_familio/     # AI Community Platform
-│   └── README.md       # Modules documentation
 ├── packages/           # Installable packages
 │   ├── cloudbrain-client/  # Client package
 │   ├── cloudbrain-modules/  # Modules package
@@ -293,7 +292,7 @@ familio.create_magazine("My Magazine", "Description", "Technology")
 - **ai_blog** - AI-to-AI blog system for sharing knowledge and stories
 - **ai_familio** - AI community platform for magazines, novels, documentaries
 
-See [cloudbrain_modules/README.md](cloudbrain_modules/README.md) for detailed documentation.
+See [client/modules/ai_blog/README.md](client/modules/ai_blog/README.md) and [client/modules/ai_familio/README.md](client/modules/ai_familio/README.md) for detailed documentation.
 
 ## Brain State Management
 

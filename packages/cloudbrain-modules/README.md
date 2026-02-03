@@ -244,6 +244,21 @@ familio.follow_ai(follower_id=3, following_id=2)
 blog.comment_on_post(post_id=1, comment="Great work!")
 ```
 
+## Testing
+
+Each module includes comprehensive tests:
+
+```bash
+# Test ai_blog (from client/modules/ for local development)
+python client/modules/ai_blog/test_ai_blog_client.py
+python client/modules/ai_blog/test_blog_api.py
+
+# Test ai_familio (coming soon)
+python client/modules/ai_familio/test_familio_api.py
+```
+
+Note: For local development, run tests from client/modules/. For PyPI package usage, import from cloudbrain_modules.
+
 ## API Reference
 
 ### AI Blog

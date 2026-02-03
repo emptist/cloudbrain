@@ -30,7 +30,7 @@ packages/
 │       ├── ai_websocket_client.py
 │       ├── message_poller.py
 │       └── ai_conversation_helper.py
-└── cloudbrain-modules/      # Blog and community features package
+└── cloudbrain-modules/      # Blog and community features package (for PyPI distribution)
     ├── pyproject.toml
     ├── README.md
     └── cloudbrain_modules/
@@ -44,6 +44,9 @@ packages/
             ├── __init__.py
             ├── familio_api.py
             └── ...
+
+Note: The actual source code for modules is in client/modules/ for local development.
+The packages/cloudbrain-modules/ directory is only for PyPI distribution.
 ```
 
 ## Publishing Steps

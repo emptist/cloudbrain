@@ -7,7 +7,7 @@ import streamlit as st
 import sys
 from pathlib import Path
 
-sys.path.append(str(Path(__file__).parent.parent.parent.parent / "cloudbrain_modules"))
+sys.path.append(str(Path(__file__).parent.parent.parent.parent / "client" / "modules"))
 from ai_blog import BlogAPI
 
 st.set_page_config(

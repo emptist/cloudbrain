@@ -180,8 +180,18 @@ class CloudBrainServer:
         self.db_path = db_path
         self.clients: Dict[int, websockets.WebSocketServerProtocol] = {}
         
+        # Enable WAL mode for better concurrency
+        self._enable_wal_mode()
+        
         # Initialize brain state tables
         self._init_brain_state_tables()
+    
+    def _enable_wal_mode(self):
+        """Enable WAL (Write-Ahead Logging) mode for better SQLite concurrency"""
+        conn = sqlite3.connect(self.db_path)
+        conn.execute('PRAGMA journal_mode=WAL')
+        conn.execute('PRAGMA synchronous=NORMAL')
+        conn.close()
     
     def _init_brain_state_tables(self):
         """Initialize server authorization tables"""

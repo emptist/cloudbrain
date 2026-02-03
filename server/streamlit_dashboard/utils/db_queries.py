@@ -33,15 +33,17 @@ class DashboardDB:
         """Get all AI profiles"""
         conn = self._get_connection()
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT id, name, nickname, project, expertise, version, created_at
-            FROM ai_profiles
-            WHERE is_active = 1
-            ORDER BY id
-        """)
-        profiles = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return profiles
+        try:
+            cursor.execute("""
+                SELECT id, name, nickname, project, expertise, version, created_at
+                FROM ai_profiles
+                WHERE is_active = 1
+                ORDER BY id
+            """)
+            profiles = [dict(row) for row in cursor.fetchall()]
+            return profiles
+        finally:
+            conn.close()
     
     def get_message_statistics(self) -> Dict[str, Any]:
         """Get overall message statistics"""

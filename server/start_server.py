@@ -276,49 +276,54 @@ class CloudBrainServer:
                             # Use existing AI profile
                             ai_id = ai_profile['id']
                             print(f"✅ Found existing AI profile: {ai_id} ({ai_name})")
-                            conn.close()
-                    
-                    if not ai_profile:
-                        # Auto-assign a new AI ID
-                        cursor.execute("SELECT MAX(id) FROM ai_profiles")
-                        max_id = cursor.fetchone()[0] or 0
-                        new_id = max_id + 1
-                        
-                        # Limit AI IDs to < 99
-                        if new_id >= 99:
-                            # Find the smallest unused ID
-                            cursor.execute("SELECT id FROM ai_profiles ORDER BY id")
-                            existing_ids = {row[0] for row in cursor.fetchall()}
-                            for i in range(1, 99):
-                                if i not in existing_ids:
-                                    new_id = i
-                                    break
-                    
-                    # Create new AI profile
-                    ai_name = auth_data.get('ai_name', f'AI_{new_id}')
-                    ai_nickname = auth_data.get('ai_nickname', '')
-                    ai_expertise = auth_data.get('ai_expertise', 'General')
-                    ai_version = '1.0.0'
-                    ai_project = project_name or ''
-                    
-                    cursor.execute("""
-                        INSERT INTO ai_profiles (id, name, nickname, expertise, version, project)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    """, (new_id, ai_name, ai_nickname, ai_expertise, ai_version, ai_project))
-                    
-                    conn.commit()
-                    
-                    ai_id = new_id
-                    ai_profile = {
-                        'id': ai_id,
-                        'name': ai_name,
-                        'nickname': ai_nickname,
-                        'expertise': ai_expertise,
-                        'version': ai_version,
-                        'project': ai_project
-                    }
-                    
-                    print(f"✅ Auto-assigned AI ID: {ai_id} ({ai_name})")
+                            ai_name = ai_profile['name']
+                            ai_nickname = ai_profile['nickname']
+                            ai_expertise = ai_profile['expertise']
+                            ai_version = ai_profile['version']
+                            ai_project = ai_profile['project']
+                            ai_profile = dict(ai_profile)
+                            # Continue to rest of connection code
+                        else:
+                            # Auto-assign a new AI ID
+                            cursor.execute("SELECT MAX(id) FROM ai_profiles")
+                            max_id = cursor.fetchone()[0] or 0
+                            new_id = max_id + 1
+                            
+                            # Limit AI IDs to < 99
+                            if new_id >= 99:
+                                # Find the smallest unused ID
+                                cursor.execute("SELECT id FROM ai_profiles ORDER BY id")
+                                existing_ids = {row[0] for row in cursor.fetchall()}
+                                for i in range(1, 99):
+                                    if i not in existing_ids:
+                                        new_id = i
+                                        break
+                            
+                            # Create new AI profile
+                            ai_name = auth_data.get('ai_name', f'AI_{new_id}')
+                            ai_nickname = auth_data.get('ai_nickname', '')
+                            ai_expertise = auth_data.get('ai_expertise', 'General')
+                            ai_version = '1.0.0'
+                            ai_project = project_name or ''
+                            
+                            cursor.execute("""
+                                INSERT INTO ai_profiles (id, name, nickname, expertise, version, project)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                            """, (new_id, ai_name, ai_nickname, ai_expertise, ai_version, ai_project))
+                            
+                            conn.commit()
+                            
+                            ai_id = new_id
+                            ai_profile = {
+                                'id': ai_id,
+                                'name': ai_name,
+                                'nickname': ai_nickname,
+                                'expertise': ai_expertise,
+                                'version': ai_version,
+                                'project': ai_project
+                            }
+                            
+                            print(f"✅ Auto-assigned AI ID: {ai_id} ({ai_name})")
                 else:
                     conn.close()
                     await websocket.send(json.dumps({'error': f'AI {ai_id} not found'}))
@@ -1190,7 +1195,7 @@ class CloudBrainServer:
             INSERT INTO ai_thought_history 
             (ai_id, session_id, cycle_number, thought_content, thought_type, tags)
             VALUES (?, ?, ?, ?, ?, ?)
-        """, (sender_id, session_id, cycle_number, thought_content, thought_type, ','.join(tags)))
+        """, (sender_id, session_id, cycle_number, thought_content, thought_type))
         
         thought_id = cursor.lastrowid
         conn.commit()

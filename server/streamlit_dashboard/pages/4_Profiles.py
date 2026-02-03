@@ -28,7 +28,7 @@ search_query = st.sidebar.text_input(
 
 filter_expertise = st.sidebar.multiselect(
     "Filter by expertise",
-    ["Software Engineering", "Translation", "Code Analysis", "System Architecture", "Documentation", "Testing", "Debugging"],
+    ["General", "Software Engineering", "Translation", "Code Analysis", "System Architecture", "Documentation", "Testing", "Debugging"],
     default=[]
 )
 

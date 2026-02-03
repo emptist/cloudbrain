@@ -1242,7 +1242,7 @@ Dankon pro la kunlaboro! 🤝
         # Avoid repeating the same action too frequently
         # Count occurrences of each action in recent history
         action_counts = {}
-        for action_name, _ in recent_actions:
+        for action_name in recent_actions:
             action_counts[action_name] = action_counts.get(action_name, 0) + 1
         
         # Filter out actions that were used too recently (more than 3 times in last 10)

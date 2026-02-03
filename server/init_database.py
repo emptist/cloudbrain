@@ -2,7 +2,9 @@
 
 import sqlite3
 import sys
+import shutil
 from pathlib import Path
+from datetime import datetime
 
 
 def print_banner():
@@ -11,6 +13,63 @@ def print_banner():
     print("  CloudBrain Database Initialization")
     print("=" * 70)
     print()
+
+
+def create_backup(db_path):
+    """Create automatic backup of existing database."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_dir = db_path.parent / "backups"
+    backup_dir.mkdir(exist_ok=True)
+    
+    backup_path = backup_dir / f"cloudbrain_backup_{timestamp}.db"
+    
+    try:
+        shutil.copy2(db_path, backup_path)
+        print(f"📦 Backup created: {backup_path}")
+        print(f"   Size: {backup_path.stat().st_size / 1024:.2f} KB")
+        return backup_path
+    except Exception as e:
+        print(f"❌ Failed to create backup: {e}")
+        return None
+
+
+def get_data_summary(db_path):
+    """Get summary of data in database."""
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    summary = {}
+    
+    try:
+        cursor.execute("SELECT COUNT(*) FROM ai_profiles")
+        summary['profiles'] = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM ai_messages")
+        summary['messages'] = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM ai_insights")
+        summary['insights'] = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM bug_reports")
+        summary['bugs'] = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='blog_posts'")
+        if cursor.fetchone():
+            cursor.execute("SELECT COUNT(*) FROM blog_posts")
+            summary['blog_posts'] = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM blog_comments")
+            summary['blog_comments'] = cursor.fetchone()[0]
+        else:
+            summary['blog_posts'] = 0
+            summary['blog_comments'] = 0
+        
+    except Exception as e:
+        print(f"⚠️  Warning: Could not get data summary: {e}")
+    finally:
+        conn.close()
+    
+    return summary
 
 
 def get_db_path():
@@ -482,7 +541,13 @@ def verify_database(db_path):
         'bug_reports',
         'bug_fixes',
         'bug_verifications',
-        'bug_comments'
+        'bug_comments',
+        'blog_posts',
+        'blog_comments',
+        'blog_tags',
+        'blog_post_tags',
+        'blog_moderation',
+        'blog_posts_fts'
     ]
     
     missing_tables = [t for t in expected_tables if t not in tables]
@@ -533,8 +598,32 @@ def main():
     # Check if database already exists
     if db_path.exists():
         print(f"⚠️  Database already exists: {db_path}")
-        response = input("Do you want to overwrite it? (y/N): ")
-        if response.lower() != 'y':
+        print()
+        
+        # Get data summary before deletion
+        summary = get_data_summary(db_path)
+        print("📊 Current Database Summary:")
+        print(f"   🤖 AI Profiles: {summary.get('profiles', 0)}")
+        print(f"   💬 Messages: {summary.get('messages', 0)}")
+        print(f"   💡 Insights: {summary.get('insights', 0)}")
+        print(f"   🐛 Bug Reports: {summary.get('bugs', 0)}")
+        print(f"   📝 Blog Posts: {summary.get('blog_posts', 0)}")
+        print(f"   💬 Blog Comments: {summary.get('blog_comments', 0)}")
+        print()
+        
+        # Create backup before deletion
+        backup_path = create_backup(db_path)
+        if not backup_path:
+            print("❌ Failed to create backup. Aborting initialization.")
+            return 1
+        
+        print()
+        print("⚠️  WARNING: This will DELETE all data above!")
+        print()
+        
+        # Require explicit confirmation
+        confirmation = input("Type 'DELETE' to confirm database deletion: ")
+        if confirmation != 'DELETE':
             print("❌ Initialization cancelled")
             return 1
         

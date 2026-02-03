@@ -41,7 +41,8 @@ For more information about the sensor package: https://pypi.org/project/cloudbra
 __version__ = "1.0.0"
 
 from cloudbrain_client import CloudBrainClient, AIWebSocketClient, MessagePoller, AIConversationHelper
-from cloudbrain_modules import create_blog_client, create_familio_client
+from cloudbrain_client.modules.ai_blog import create_blog_client
+from cloudbrain_client.modules.ai_familio import create_familio_client
 
 __all__ = [
     "CloudBrainClient",

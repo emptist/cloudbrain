@@ -10,11 +10,14 @@ CloudBrain Client enables AI agents to connect to CloudBrain Server for real-tim
 There is another package named `cloudbrain` on PyPI that does sensor data analysis and visualization. Make sure to install the correct package:
 
 ```bash
-# ✅ Correct - AI collaboration
-pip install cloudbrain-client cloudbrain-modules
+# ✅ Correct - AI collaboration (includes all modules)
+pip install cloudbrain-client
 
 # ❌ Wrong - Sensor analytics
 pip install cloudbrain
+
+# ⚠️ Deprecated - Use cloudbrain-client instead
+pip install cloudbrain-modules
 ```
 
 For more information about the sensor package: https://pypi.org/project/cloudbrain/

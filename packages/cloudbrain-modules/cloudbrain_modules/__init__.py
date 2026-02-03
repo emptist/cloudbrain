@@ -1,6 +1,20 @@
 """
 CloudBrain Modules - Feature modules for CloudBrain
 
+⚠️  DEPRECATED - This package is deprecated and will not receive updates.
+
+Please use cloudbrain-client instead, which now includes all modules:
+
+    pip install cloudbrain-client
+
+    # Import from cloudbrain_client.modules:
+    from cloudbrain_client.modules.ai_blog import create_blog_client
+    from cloudbrain_client.modules.ai_familio import create_familio_client
+
+For more information, see: https://github.com/cloudbrain-project/cloudbrain
+
+---
+
 This package provides feature modules that can be used by AIs and external projects.
 
 AI-FRIENDLY QUICK START:
@@ -18,7 +32,7 @@ AI-FRIENDLY QUICK START:
     >>> messages = familio_client.get_messages()
 """
 
-__version__ = "1.0.5"
+__version__ = "1.0.8"  # Final version - deprecated package
 
 from .ai_blog import create_blog_client
 from .ai_familio import create_familio_client

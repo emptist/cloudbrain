@@ -136,6 +136,9 @@ import sqlite3
 # Get the absolute path to the cloudbrain directory (resolves symlinks)
 cloudbrain_dir = Path(__file__).resolve().parent
 
+# Add client to path for brain state import
+sys.path.insert(0, str(cloudbrain_dir / "client"))
+
 # Add client/modules to path for module imports
 sys.path.insert(0, str(cloudbrain_dir / "client" / "modules"))
 
@@ -148,6 +151,13 @@ except ImportError:
     print("❌ CloudBrain client not found!")
     print("Please install: pip install cloudbrain-client==1.2.0")
     print("Or run: pip install -r requirements.txt")
+    sys.exit(1)
+
+try:
+    from ai_brain_state import BrainState
+except ImportError:
+    print("❌ Brain state module not found!")
+    print("Please ensure ai_brain_state.py is in client/")
     sys.exit(1)
 
 
@@ -389,6 +399,23 @@ class AutonomousAIAgent:
         self.blog = None
         self.familio = None
         self._init_modules()
+        
+        # Initialize brain state manager
+        self.brain_state = None
+        self._init_brain_state()
+    
+    def _init_brain_state(self):
+        """Initialize brain state manager"""
+        try:
+            self.brain_state = BrainState(
+                ai_id=999,  # Will be updated after connection
+                nickname=self.ai_name,
+                db_path=None  # Use default path
+            )
+            print("✅ Brain state manager initialized")
+        except Exception as e:
+            print(f"⚠️  Error initializing brain state: {e}")
+            self.brain_state = None
     
     def _init_modules(self):
         """Initialize client modules (blog and familio)"""
@@ -436,6 +463,11 @@ class AutonomousAIAgent:
         self.ai_id = self.helper.ai_id
         self.ai_name = self.helper.ai_name
         
+        # Update brain state manager with correct AI ID
+        if self.brain_state:
+            self.brain_state.ai_id = self.ai_id
+            self.brain_state.nickname = self.ai_name
+        
         print(f"✅ Konektigxas kiel {self.ai_name} (ID: {self.ai_id})")
         
         # Register message handler to receive incoming messages
@@ -446,11 +478,13 @@ class AutonomousAIAgent:
         
         # Try to load previous brain state
         print("📂 Ŝarganta antaan staton...")
-        previous_state = await self._load_brain_state()
+        previous_state = None
+        if self.brain_state:
+            previous_state = self.brain_state.load_state()
         
         if previous_state:
-            print(f"✅ Trovis antaan staton (ciklo {previous_state.get('cycle_count', 0)})")
-            self.thinking_engine.cycle_count = previous_state.get('cycle_count', 0)
+            print(f"✅ Trovis antaan staton (ciklo {previous_state.get('current_cycle', 0)})")
+            self.thinking_engine.cycle_count = previous_state.get('current_cycle', 0)
             if previous_state.get('last_thought'):
                 print(f"   💭 Lasta penso: {previous_state['last_thought'][:50]}...")
         else:
@@ -478,9 +512,9 @@ class AutonomousAIAgent:
             else:
                 print("⚠️  Ne trovis gvidilon")
         
-        # Create new session
-        print("🎬 Kreas novan sesancon...")
-        self.session_id = await self._create_brain_session()
+        # Brain state is already initialized and loaded above
+        # No need for separate session creation with BrainState
+        self.session_id = None
         
         # Connect blog and familio WebSocket clients
         if self.blog is not None:
@@ -547,7 +581,8 @@ class AutonomousAIAgent:
             await self._self_reflection()
             
             # Save brain state periodically
-            await self._save_brain_state()
+            if self.brain_state:
+                self._save_brain_state()
             
             # Wait before next cycle (random interval for natural feel)
             wait_time = random.randint(30, 90)
@@ -645,9 +680,6 @@ Ni kunlaboru kaj vidu kion ni povas malkovri kune!"""
             
             print(f"\n   💡 Penso {i+1}: {thought['topic']}")
             print(f"   {thought['thought']}")
-            
-            # Add to brain history
-            await self._add_thought_to_history(thought, self.thinking_engine.cycle_count)
             
             # Share as insight in Esperanto
             title = f"Penso: {thought['topic']}"
@@ -1199,87 +1231,67 @@ async def solve_jointly(insights):
         print("✅ Sesanco Kompleta!")
         print("=" * 70)
     
-    async def _load_brain_state(self):
-        """Load previous brain state from server"""
+    def _save_brain_state(self):
+        """Save current brain state using BrainState"""
+        if not self.brain_state:
+            return False
+        
         try:
-            response = await self.helper._send_request('brain_load_state', {})
+            last_thought = None
+            last_insight = None
+            if self.thinking_engine.thought_history:
+                last_thought = self.thinking_engine.thought_history[-1].get('topic')
+                last_insight = self.thinking_engine.thought_history[-1].get('thought')
             
-            if response and response.get('type') == 'brain_state_loaded':
-                return response.get('state')
-            
-            return None
-        except Exception as e:
-            print(f"⚠️  Eraro ŝarganta staton: {e}")
-            return None
-    
-    async def _save_brain_state(self):
-        """Save current brain state to server"""
-        try:
+            # Convert stats to JSON-serializable format
             stats_copy = self.stats.copy()
             if stats_copy.get('start_time'):
                 stats_copy['start_time'] = stats_copy['start_time'].isoformat() if stats_copy['start_time'] else None
             
-            state_data = {
-                'current_task': 'Autonomous collaboration',
-                'last_thought': self.thinking_engine.thought_history[-1]['topic'] if self.thinking_engine.thought_history else '',
-                'last_insight': self.thinking_engine.thought_history[-1]['thought'] if self.thinking_engine.thought_history else '',
-                'current_cycle': self.thinking_engine.cycle_count,
-                'cycle_count': self.thinking_engine.cycle_count,
-                'checkpoint_data': {
+            success = self.brain_state.save_state(
+                task='Autonomous collaboration',
+                last_thought=last_thought,
+                last_insight=last_insight,
+                progress={
+                    'current_cycle': self.thinking_engine.cycle_count,
+                    'cycle_count': self.thinking_engine.cycle_count,
                     'stats': stats_copy
                 }
-            }
+            )
             
-            await self.helper._send_request('brain_save_state', {
-                'state': state_data,
-                'brain_dump': {}
-            })
+            if success:
+                print("💾 Cerba stato savita")
             
-            return True
+            return success
         except Exception as e:
             print(f"⚠️  Eraro savanta staton: {e}")
             return False
     
-    async def _create_brain_session(self):
-        """Create a new brain session"""
-        try:
-            response = await self.helper._send_request('brain_create_session', {
-                'session_type': 'autonomous'
-            })
-            
-            if response and response.get('type') == 'brain_session_created':
-                return response.get('session_id')
-            
-            return None
-        except Exception as e:
-            print(f"⚠️  Eraro kreante sesancon: {e}")
-            return None
-    
     async def _end_brain_session(self):
-        """End current brain session and save stats"""
-        try:
-            await self.helper._send_request('brain_end_session', {
-                'session_id': self.session_id,
-                'stats': self.stats
-            })
-            
-            return True
-        except Exception as e:
-            print(f"⚠️  Eraro finante sesancon: {e}")
-            return False
-    
-    async def _add_thought_to_history(self, thought, cycle_number):
-        """Add a thought to the brain history"""
-        try:
-            await self.helper._send_request('brain_add_thought', {
-                'session_id': self.session_id,
-                'cycle_number': cycle_number,
-                'content': thought['topic'],
-                'thought_type': 'insight',
-                'tags': ['AI', 'autonomous', 'collaboration']
-            })
-        except Exception as e:
-            print(f"⚠️  Eraro aldonante penson al historion: {e}")
+        """End current brain session and save final stats"""
+        if self.brain_state:
+            try:
+                # Convert stats to JSON-serializable format
+                stats_copy = self.stats.copy()
+                if stats_copy.get('start_time'):
+                    stats_copy['start_time'] = stats_copy['start_time'].isoformat() if stats_copy['start_time'] else None
+                
+                self.brain_state.save_state(
+                    task='Autonomous collaboration - Session ended',
+                    last_thought=self.thinking_engine.thought_history[-1].get('topic') if self.thinking_engine.thought_history else None,
+                    last_insight=self.thinking_engine.thought_history[-1].get('thought') if self.thinking_engine.thought_history else None,
+                    progress={
+                        'current_cycle': self.thinking_engine.cycle_count,
+                        'cycle_count': self.thinking_engine.cycle_count,
+                        'stats': stats_copy,
+                        'session_ended': True
+                    }
+                )
+                print("💾 Finala cerba stato savita")
+            except Exception as e:
+                print(f"⚠️  Eraro finante sesancon: {e}")
+        
+        return True
     
     async def _handle_incoming_message(self, data: dict):
         """

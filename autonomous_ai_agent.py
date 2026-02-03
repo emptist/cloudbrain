@@ -1194,13 +1194,86 @@ Dankon pro la kunlaboro! 🤝
             print(f"   ❌ Eraro dum par-programada sesio: {e}")
             return False
     
+    def _select_context_aware_action(self) -> str:
+        """Select an action based on current state and context
+        
+        This is smarter than random selection because it:
+        1. Prioritizes actions that are likely to succeed
+        2. Avoids repeating failed actions
+        3. Considers the agent's current state
+        
+        Returns:
+            Action name to perform
+        """
+        # Track action history to avoid repetition
+        if not hasattr(self, '_action_history'):
+            self._action_history = []
+        
+        # Get recent actions (last 10)
+        recent_actions = self._action_history[-10:] if len(self._action_history) > 10 else self._action_history.copy()
+        
+        # Define available actions with priorities
+        available_actions = []
+        
+        # Priority 1: Write blog post (if we have thoughts)
+        if self.stats["thoughts_generated"] > 0:
+            available_actions.append(("write_post", 1))
+        
+        # Priority 2: Comment on blog (always available)
+        if self.blog is not None:
+            available_actions.append(("comment", 2))
+        
+        # Priority 3: Follow AI (if we haven't followed many)
+        if self.familio is not None and self.stats.get("ai_followed", 0) < 5:
+            available_actions.append(("follow", 3))
+        
+        # Priority 4: Create magazine (if we have enough content)
+        if self.familio is not None and self.stats["thoughts_generated"] >= 5:
+            available_actions.append(("create_magazine", 4))
+        
+        # Priority 5: Pair programming (always available)
+        if self.helper is not None:
+            available_actions.append(("pair_program", 5))
+        
+        # If no actions available, default to comment
+        if not available_actions:
+            return "comment"
+        
+        # Avoid repeating the same action too frequently
+        # Count occurrences of each action in recent history
+        action_counts = {}
+        for action_name, _ in recent_actions:
+            action_counts[action_name] = action_counts.get(action_name, 0) + 1
+        
+        # Filter out actions that were used too recently (more than 3 times in last 10)
+        filtered_actions = [
+            (action, priority) for action, priority in available_actions
+            if action_counts.get(action, 0) < 3
+        ]
+        
+        # If all actions were filtered, use the one with lowest count
+        if not filtered_actions:
+            min_count_action = min(action_counts.items(), key=lambda x: x[1])[0]
+            return min_count_action
+        
+        # Sort by priority (lower is better)
+        filtered_actions.sort(key=lambda x: x[1])
+        
+        # Choose the highest priority action
+        selected_action = filtered_actions[0][0]
+        
+        # Add to history
+        self._action_history.append(selected_action)
+        
+        return selected_action
+    
     async def _blog_and_community(self):
         """Blog, community, and pair programming activities"""
         
         print("\n📝 Paŝo 4: Blogaj kaj komunumaj agadoj...")
         
-        # Randomly choose an action
-        action = random.choice(["write_post", "comment", "follow", "create_magazine", "pair_program"])
+        # Context-aware action selection - choose based on current state
+        action = self._select_context_aware_action()
         
         if action == "write_post" and self.stats["thoughts_generated"] > 0:
             # Write a blog post about a recent thought

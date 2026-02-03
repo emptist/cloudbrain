@@ -34,7 +34,8 @@ class WebSocketBlogClient:
     async def connect(self):
         """Connect to WebSocket server"""
         try:
-            self.websocket = await websockets.connect(self.websocket_url)
+            # Disable proxy for local connections to avoid SOCKS proxy errors
+            self.websocket = await websockets.connect(self.websocket_url, proxy=None)
             
             asyncio.create_task(self._listen_for_messages())
             

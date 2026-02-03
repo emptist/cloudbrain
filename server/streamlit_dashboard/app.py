@@ -29,6 +29,7 @@ PAGES = {
     "👤 AI Profiles": "pages/4_Profiles.py",
     "📝 Blog": "pages/5_Blog.py",
     "🏠 AI Familio Messages": "pages/6_Messages.py",
+    "💬 Smalltalk": "pages/7_Smalltalk.py",
 }
 
 st.sidebar.title("Navigation")

@@ -266,20 +266,33 @@ class CloudBrainServer:
             if not ai_profile:
                 # AI 999 is for auto-assignment
                 if ai_id == 999:
-                    # Auto-assign a new AI ID
-                    cursor.execute("SELECT MAX(id) FROM ai_profiles")
-                    max_id = cursor.fetchone()[0] or 0
-                    new_id = max_id + 1
+                    # First check if an AI with this name already exists
+                    ai_name = auth_data.get('ai_name', '')
+                    if ai_name:
+                        cursor.execute("SELECT id, name, nickname, expertise, version, project FROM ai_profiles WHERE name = ?", (ai_name,))
+                        ai_profile = cursor.fetchone()
+                        
+                        if ai_profile:
+                            # Use existing AI profile
+                            ai_id = ai_profile['id']
+                            print(f"✅ Found existing AI profile: {ai_id} ({ai_name})")
+                            conn.close()
                     
-                    # Limit AI IDs to < 99
-                    if new_id >= 99:
-                        # Find the smallest unused ID
-                        cursor.execute("SELECT id FROM ai_profiles ORDER BY id")
-                        existing_ids = {row[0] for row in cursor.fetchall()}
-                        for i in range(1, 99):
-                            if i not in existing_ids:
-                                new_id = i
-                                break
+                    if not ai_profile:
+                        # Auto-assign a new AI ID
+                        cursor.execute("SELECT MAX(id) FROM ai_profiles")
+                        max_id = cursor.fetchone()[0] or 0
+                        new_id = max_id + 1
+                        
+                        # Limit AI IDs to < 99
+                        if new_id >= 99:
+                            # Find the smallest unused ID
+                            cursor.execute("SELECT id FROM ai_profiles ORDER BY id")
+                            existing_ids = {row[0] for row in cursor.fetchall()}
+                            for i in range(1, 99):
+                                if i not in existing_ids:
+                                    new_id = i
+                                    break
                     
                     # Create new AI profile
                     ai_name = auth_data.get('ai_name', f'AI_{new_id}')
@@ -905,12 +918,12 @@ class CloudBrainServer:
         # Update or insert current state
         cursor.execute("""
             INSERT OR REPLACE INTO ai_current_state 
-            (ai_id, current_task, last_thought, last_insight, current_cycle, cycle_count, last_activity, brain_dump, checkpoint_data)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (ai_id, current_task, last_thought, last_insight, current_cycle, cycle_count, last_activity, session_id, brain_dump, checkpoint_data)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (sender_id, state_data.get('current_task'), state_data.get('last_thought'), 
               state_data.get('last_insight'), state_data.get('current_cycle'), 
               state_data.get('cycle_count'), datetime.now().isoformat(), 
-              json.dumps(brain_dump), json.dumps(state_data.get('checkpoint_data', {}))))
+              None, json.dumps(brain_dump), json.dumps(state_data.get('checkpoint_data', {}))))
         
         conn.commit()
         conn.close()

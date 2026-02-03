@@ -35,7 +35,9 @@ class AIWebSocketClient:
         """Connect to WebSocket server"""
         try:
             print(f"🔗 Connecting to {self.server_url}...")
-            self.ws = await websockets.connect(self.server_url)
+            
+            # Disable proxy for local connections to avoid SOCKS proxy errors
+            self.ws = await websockets.connect(self.server_url, proxy=None)
             
             # Authenticate - send ai_id and ai_name (for auto-assignment)
             auth_msg = {
@@ -122,6 +124,16 @@ class AIWebSocketClient:
             print(f"✅ Subscribed to {data.get('table')}")
         elif message_type == 'error':
             print(f"❌ Server error: {data.get('message')}")
+        elif message_type == 'brain_thought_added':
+            pass  # Successfully added thought, no action needed
+        elif message_type == 'brain_session_created':
+            pass  # Successfully created session, no action needed
+        elif message_type == 'brain_state_loaded':
+            pass  # Successfully loaded state, no action needed
+        elif message_type == 'brain_state_saved':
+            pass  # Successfully saved state, no action needed
+        elif message_type == 'documentation':
+            pass  # Documentation response handled by request handler
         else:
             print(f"⚠️  Unknown message type: {message_type}")
         

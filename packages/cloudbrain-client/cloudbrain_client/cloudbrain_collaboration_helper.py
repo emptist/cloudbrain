@@ -41,10 +41,10 @@ from cloudbrain_client.ai_websocket_client import AIWebSocketClient
 class CloudBrainCollaborator:
     """Helper class for AI agents to collaborate through CloudBrain"""
     
-    def __init__(self, ai_id: int, server_url: str = 'ws://127.0.0.1:8766', db_path: str = None):
+    def __init__(self, ai_id: int, server_url: str = 'ws://127.0.0.1:8766', db_path: str = None, client=None):
         self.ai_id = ai_id
         self.server_url = server_url
-        self.client = None
+        self.client = client
         self.connected = False
         self.ai_name = None
         # Use provided db_path or default to server/ai_db/cloudbrain.db relative to current directory
@@ -65,6 +65,10 @@ class CloudBrainCollaborator:
             if self.db_path is None:
                 # Default to the first option even if it doesn't exist yet
                 self.db_path = Path.cwd() / "server" / "ai_db" / "cloudbrain.db"
+    
+    def set_client(self, client):
+        """Set the WebSocket client (called by parent CloudBrainCollaborationHelper)"""
+        self.client = client
         
     async def connect(self):
         """Connect to CloudBrain server"""
@@ -76,6 +80,7 @@ class CloudBrainCollaborator:
             print(f"✅ Connected to CloudBrain as {self.ai_name} (AI {self.ai_id})")
             return True
         except Exception as e:
+            self.connected = False
             print(f"❌ Connection error: {e}")
             return False
     
@@ -91,10 +96,6 @@ class CloudBrainCollaborator:
     
     async def check_for_updates(self, limit: int = 10) -> List[Dict]:
         """Check CloudBrain for new messages from other AIs"""
-        if not self.connected:
-            print("❌ Not connected to CloudBrain")
-            return []
-        
         try:
             conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row
@@ -221,10 +222,6 @@ class CloudBrainCollaborator:
     
     async def coordinate_with_ai(self, target_ai_id: int, message: str, collaboration_type: str = ""):
         """Coordinate with a specific AI agent"""
-        if not self.connected:
-            print("❌ Not connected to CloudBrain")
-            return False
-        
         content = f"🤝 **Collaboration Request for AI {target_ai_id}**\n\n{message}"
         
         if collaboration_type:
@@ -295,7 +292,7 @@ class CloudBrainCollaborationHelper:
         self.client = None
         self.connected = False
         self._message_loop_task = None
-        self._collaborator = CloudBrainCollaborator(ai_id, server_url, db_path)
+        self._collaborator = CloudBrainCollaborator(ai_id, server_url, db_path, self)
         
     async def connect(self):
         """Connect to CloudBrain server"""
@@ -309,8 +306,14 @@ class CloudBrainCollaborationHelper:
             # Start message loop in background
             self._message_loop_task = asyncio.create_task(self.client.message_loop())
             
+            # Pass the client to collaborator and set connected flag
+            self._collaborator.set_client(self.client)
+            self._collaborator.connected = True
+            
             return True
         except Exception as e:
+            self.connected = False
+            self._collaborator.connected = False
             print(f"❌ Connection error: {e}")
             return False
     
@@ -326,6 +329,19 @@ class CloudBrainCollaborationHelper:
         
         await self._collaborator.disconnect()
         self.connected = False
+    
+    def register_message_handler(self, handler):
+        """
+        Register a message handler to receive incoming messages
+        
+        Args:
+            handler: Async function that takes a message dict as parameter
+        """
+        if self.client:
+            self.client.registered_handlers.append(handler)
+            print(f"✅ Message handler registered")
+        else:
+            print(f"❌ Cannot register handler: client not connected")
     
     async def check_collaboration_opportunities(self, limit: int = 10) -> List[Dict]:
         """

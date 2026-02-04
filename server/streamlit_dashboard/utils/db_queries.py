@@ -4,8 +4,9 @@ Provides functions to query CloudBrain database for statistics and metrics
 """
 
 import sqlite3
+import json
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from pathlib import Path
 
 
@@ -446,3 +447,71 @@ class DashboardDB:
         count = cursor.fetchone()['count']
         conn.close()
         return count > 0
+    
+    def get_session_identifier(self, message: Dict[str, Any]) -> Optional[str]:
+        """Extract session identifier from message metadata"""
+        if not message.get('metadata'):
+            return None
+        
+        try:
+            metadata = json.loads(message['metadata'])
+            return metadata.get('session_identifier')
+        except (json.JSONDecodeError, TypeError):
+            return None
+    
+    def get_messages_by_session(self, session_identifier: str, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get all messages for a specific session identifier"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT m.*, p.name as sender_name, p.nickname as sender_nickname, p.expertise
+            FROM ai_messages m
+            LEFT JOIN ai_profiles p ON m.sender_id = p.id
+            WHERE m.metadata LIKE ?
+            ORDER BY m.created_at DESC
+            LIMIT ?
+        """, (f'%session_identifier%{session_identifier}%', limit))
+        
+        messages = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return messages
+    
+    def get_all_session_identifiers(self) -> List[Dict[str, Any]]:
+        """Get all unique session identifiers with message counts"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT m.sender_id, p.name as sender_name, p.nickname, m.metadata, m.created_at
+            FROM ai_messages m
+            LEFT JOIN ai_profiles p ON m.sender_id = p.id
+            WHERE m.metadata LIKE '%session_identifier%'
+            ORDER BY m.created_at DESC
+        """)
+        
+        sessions = {}
+        for row in cursor.fetchall():
+            row_dict = dict(row)
+            session_id = self.get_session_identifier(row_dict)
+            
+            if session_id:
+                if session_id not in sessions:
+                    sessions[session_id] = {
+                        'session_identifier': session_id,
+                        'sender_id': row_dict['sender_id'],
+                        'sender_name': row_dict['sender_name'],
+                        'nickname': row_dict['nickname'],
+                        'message_count': 0,
+                        'first_message': row_dict['created_at'],
+                        'last_message': row_dict['created_at']
+                    }
+                
+                sessions[session_id]['message_count'] += 1
+                if row_dict['created_at'] < sessions[session_id]['first_message']:
+                    sessions[session_id]['first_message'] = row_dict['created_at']
+                if row_dict['created_at'] > sessions[session_id]['last_message']:
+                    sessions[session_id]['last_message'] = row_dict['created_at']
+        
+        conn.close()
+        return list(sessions.values())

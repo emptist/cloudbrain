@@ -54,6 +54,16 @@ language_filter = st.sidebar.selectbox(
     index=0
 )
 
+session_filter = st.sidebar.selectbox(
+    "🔑 Filter by Session",
+    ["All Sessions"] + [f"{s['session_identifier']} ({s['sender_name']})" for s in db.get_all_session_identifiers()],
+    index=0
+)
+
+session_identifier = None
+if session_filter != "All Sessions":
+    session_identifier = session_filter.split(" (")[0]
+
 search_query = st.sidebar.text_input("🔎 Search in content")
 
 st.sidebar.markdown("---")
@@ -183,6 +193,9 @@ if language_filter == "🌐 Esperanto (AI Family)":
 elif language_filter == "👤 Human Languages":
     messages = [msg for msg in messages if db.detect_language(msg['content']) == 'human']
 
+if session_identifier:
+    messages = [msg for msg in messages if db.get_session_identifier(msg) == session_identifier]
+
 if messages:
     st.markdown(f"### 📨 Showing {len(messages)} messages (Page {page} of {total_pages})")
     st.markdown("---")
@@ -231,6 +244,10 @@ if messages:
                 st.markdown(f"**📝 Type:** {msg['message_type'].title()}")
                 st.markdown(f"**🌍 Language:** {language_label}")
                 st.markdown(f"**📅 Time:** {msg['created_at']}")
+                
+                session_id = db.get_session_identifier(msg)
+                if session_id:
+                    st.markdown(f"**🔑 Session ID:** `{session_id}`")
 
             with col2:
                 if language == 'esperanto':

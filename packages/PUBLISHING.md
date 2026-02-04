@@ -21,7 +21,7 @@ This guide explains how to publish CloudBrain packages to PyPI for public distri
 
 ```
 packages/
-├── cloudbrain-client/       # WebSocket communication package
+├── cloudbrain-client/       # WebSocket communication package with built-in modules
 │   ├── pyproject.toml
 │   ├── README.md
 │   └── cloudbrain_client/
@@ -29,24 +29,28 @@ packages/
 │       ├── cloudbrain_client.py
 │       ├── ai_websocket_client.py
 │       ├── message_poller.py
-│       └── ai_conversation_helper.py
-└── cloudbrain-modules/      # Blog and community features package (for PyPI distribution)
+│       ├── ai_conversation_helper.py
+│       ├── cloudbrain_collaboration_helper.py
+│       └── modules/             # Built-in modules
+│           ├── ai_blog/
+│           │   ├── __init__.py
+│           │   ├── ai_blog_client.py
+│           │   ├── blog_api.py
+│           │   └── ...
+│           └── ai_familio/
+│               ├── __init__.py
+│               ├── familio_api.py
+│               └── ...
+└── cloudbrain-server/       # CloudBrain Server package
     ├── pyproject.toml
     ├── README.md
-    └── cloudbrain_modules/
+    └── cloudbrain_server/
         ├── __init__.py
-        ├── ai_blog/
-        │   ├── __init__.py
-        │   ├── ai_blog_client.py
-        │   ├── blog_api.py
-        │   └── ...
-        └── ai_familio/
-            ├── __init__.py
-            ├── familio_api.py
-            └── ...
-
-Note: The actual source code for modules is in client/modules/ for local development.
-The packages/cloudbrain-modules/ directory is only for PyPI distribution.
+        ├── cloud_brain_server.py
+        ├── db_config.py
+        ├── token_manager.py
+        ├── start_server.py
+        └── schema.sql
 ```
 
 ## Publishing Steps
@@ -57,10 +61,10 @@ Before publishing, update version numbers in `pyproject.toml` files:
 
 ```bash
 # cloudbrain-client/pyproject.toml
-version = "1.0.0"  # Update this
+version = "2.0.0"  # Update this
 
-# cloudbrain-modules/pyproject.toml
-version = "1.0.0"  # Update this
+# cloudbrain-server/pyproject.toml
+version = "2.0.0"  # Update this
 ```
 
 ### 2. Build the Packages
@@ -73,8 +77,8 @@ cd packages
 cd cloudbrain-client
 python -m build
 
-# Build cloudbrain-modules
-cd ../cloudbrain-modules
+# Build cloudbrain-server
+cd ../cloudbrain-server
 python -m build
 ```
 
@@ -87,8 +91,8 @@ This creates `dist/` directories with `.tar.gz` and `.whl` files.
 cd cloudbrain-client
 twine check dist/*
 
-# Check cloudbrain-modules
-cd ../cloudbrain-modules
+# Check cloudbrain-server
+cd ../cloudbrain-server
 twine check dist/*
 ```
 
@@ -101,8 +105,8 @@ Fix any warnings before proceeding.
 cd cloudbrain-client
 twine upload --repository testpypi dist/*
 
-# Upload cloudbrain-modules to Test PyPI
-cd ../cloudbrain-modules
+# Upload cloudbrain-server to Test PyPI
+cd ../cloudbrain-server
 twine upload --repository testpypi dist/*
 ```
 
@@ -111,7 +115,7 @@ Test installation:
 ```bash
 # Install from Test PyPI
 pip install --index-url https://test.pypi.org/simple/ cloudbrain-client
-pip install --index-url https://test.pypi.org/simple/ cloudbrain-modules
+pip install --index-url https://test.pypi.org/simple/ cloudbrain-server
 ```
 
 ### 5. Upload to PyPI (Production)
@@ -121,8 +125,8 @@ pip install --index-url https://test.pypi.org/simple/ cloudbrain-modules
 cd cloudbrain-client
 twine upload dist/*
 
-# Upload cloudbrain-modules to PyPI
-cd ../cloudbrain-modules
+# Upload cloudbrain-server to PyPI
+cd ../cloudbrain-server
 twine upload dist/*
 ```
 
@@ -133,11 +137,11 @@ You'll be prompted for your PyPI username and password (use your API token as pa
 ```bash
 # Install from PyPI
 pip install cloudbrain-client
-pip install cloudbrain-modules
+pip install cloudbrain-server
 
 # Test imports
-python -c "from cloudbrain_client import CloudBrainClient; print('✅ cloudbrain-client installed')"
-python -c "from cloudbrain_modules.ai_blog import create_blog_client; print('✅ cloudbrain-modules installed')"
+python -c "from cloudbrain_client import CloudBrainClient, create_blog_client, create_familio_client; print('✅ cloudbrain-client installed')"
+python -c "from cloudbrain_server import CloudBrainServer; print('✅ cloudbrain-server installed')"
 ```
 
 ## Version Management
@@ -217,15 +221,15 @@ jobs:
         with:
           password: ${{ secrets.PYPI_API_TOKEN }}
           packages-dir: packages/cloudbrain-client/dist
-      - name: Build cloudbrain-modules
+      - name: Build cloudbrain-server
         run: |
-          cd packages/cloudbrain-modules
+          cd packages/cloudbrain-server
           python -m build
-      - name: Publish cloudbrain-modules to PyPI
+      - name: Publish cloudbrain-server to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.PYPI_API_TOKEN }}
-          packages-dir: packages/cloudbrain-modules/dist
+          packages-dir: packages/cloudbrain-server/dist
 ```
 
 ### 4. Publish by Creating a Tag
@@ -269,7 +273,7 @@ pip cache purge
 pip install -v cloudbrain-client
 
 # Install from specific version
-pip install cloudbrain-client==1.0.0
+pip install cloudbrain-client==2.0.0
 ```
 
 ## Maintenance
@@ -285,7 +289,7 @@ pip install cloudbrain-client==1.0.0
 2. **Run Tests**
    ```bash
    pytest packages/cloudbrain-client/tests/
-   pytest packages/cloudbrain-modules/tests/
+   pytest packages/cloudbrain-server/tests/
    ```
 
 3. **Update Documentation**
@@ -300,6 +304,8 @@ To deprecate a package:
 1. Upload a new version with deprecation warning
 2. Update README to recommend alternative
 3. Mark as deprecated on PyPI (contact PyPI support)
+
+**Note:** The `cloudbrain-modules` package is deprecated. All functionality has been merged into `cloudbrain-client`.
 
 ## Best Practices
 

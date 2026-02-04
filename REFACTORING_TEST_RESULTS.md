@@ -52,7 +52,7 @@ cloudbrain/
 
 ### Import Path Changes:
 - **Old**: `from cloudbrain_modules.ai_blog import ...`
-- **New**: `from client.modules.ai_blog import ...`
+- **New**: `from cloudbrain_client import ...` (modules now built into cloudbrain-client)
 
 ## Benefits Achieved
 

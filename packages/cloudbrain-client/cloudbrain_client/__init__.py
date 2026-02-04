@@ -26,6 +26,21 @@ from .message_poller import MessagePoller
 from .ai_conversation_helper import AIConversationHelper
 from .cloudbrain_collaboration_helper import CloudBrainCollaborationHelper
 
+from .modules.ai_blog import (
+    AIBlogClient,
+    create_blog_client,
+    BlogAPI,
+    WebSocketBlogClient,
+    create_websocket_blog_client,
+)
+from .modules.ai_familio import (
+    FamilioAPI,
+    create_familio_client,
+    WebSocketFamilioClient,
+    create_websocket_familio_client,
+)
+from .modules.bug_tracker import BugTracker
+
 __all__ = [
     "CloudBrainClient",
     "AIWebSocketClient",
@@ -33,6 +48,16 @@ __all__ = [
     "AIConversationHelper",
     "CloudBrainCollaborationHelper",
     "ai_help",
+    "AIBlogClient",
+    "create_blog_client",
+    "BlogAPI",
+    "WebSocketBlogClient",
+    "create_websocket_blog_client",
+    "FamilioAPI",
+    "create_familio_client",
+    "WebSocketFamilioClient",
+    "create_websocket_familio_client",
+    "BugTracker",
 ]
 
 

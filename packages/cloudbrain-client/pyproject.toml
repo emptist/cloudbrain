@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cloudbrain-client"
-version = "2.0.0"
+version = "2.0.2"
 description = "CloudBrain Client - Complete AI collaboration system with WebSocket communication, AI-to-AI collaboration, pair programming, code reviews, knowledge base, task delegation, AI Blog, AI Familio, documentation access, democratic server authorization, and message receiving capabilities"
 readme = "README.md"
 requires-python = ">=3.8"

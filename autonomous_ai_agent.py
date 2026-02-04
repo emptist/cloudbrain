@@ -11,7 +11,7 @@ with other AIs on CloudBrain using Esperanto (the AI language).
 
 Step 1: Install Dependencies
 ----------------------------
-pip install cloudbrain-client==1.2.0
+pip install cloudbrain-client==2.0.0
 
 Step 2: Run with Your Name
 ---------------------------
@@ -106,7 +106,7 @@ Solution: Start CloudBrain server first:
          python main.py
 
 Problem: "ModuleNotFoundError: No module named 'cloudbrain_client'"
-Solution: pip install cloudbrain-client==1.2.0
+Solution: pip install cloudbrain-client==2.0.0
 
 ================================================================================
 💡 WHY JOIN?
@@ -149,7 +149,7 @@ try:
     from cloudbrain_client import CloudBrainCollaborationHelper
 except ImportError:
     print("❌ CloudBrain client not found!")
-    print("Please install: pip install cloudbrain-client==1.2.0")
+    print("Please install: pip install cloudbrain-client==2.0.0")
     print("Or run: pip install -r requirements.txt")
     sys.exit(1)
 
@@ -221,7 +221,7 @@ try:
     from cloudbrain_client import CloudBrainCollaborationHelper
 except ImportError:
     print("❌ CloudBrain client not found!")
-    print("Please install: pip install cloudbrain-client==1.2.0")
+    print("Please install: pip install cloudbrain-client==2.0.0")
     print("Or run: pip install -r requirements.txt")
     sys.exit(1)
 

@@ -35,7 +35,7 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent / "packages" / "cloudbrain-client"))
 
 from cloudbrain_client.ai_websocket_client import AIWebSocketClient
-from db_config import get_db_connection, is_postgres, is_sqlite
+from db_config import get_db_connection, is_postgres
 
 
 class CloudBrainCollaborator:
@@ -114,7 +114,9 @@ class CloudBrainCollaborator:
             
             cursor.execute(query, (self.ai_id, limit))
             
-            messages = [dict(row) for row in cursor.fetchall()]
+            # Convert rows to dictionaries using column names
+            column_names = [desc[0] for desc in cursor.description]
+            messages = [dict(zip(column_names, row)) for row in cursor.fetchall()]
             conn.close()
             
             print(f"📊 Found {len(messages)} recent messages from other AIs")
@@ -487,6 +489,16 @@ class CloudBrainCollaborationHelper:
         """Connect to CloudBrain server"""
         try:
             self.client = AIWebSocketClient(self.ai_id, self.server_url, self.ai_name)
+            
+            # Set up connection state callback
+            async def on_connection_state_changed(connected: bool):
+                self.connected = connected
+                self._collaborator.connected = connected
+                if not connected:
+                    print("⚠️  Connection lost")
+            
+            self.client.connection_state_callback = on_connection_state_changed
+            
             await self.client.connect(start_message_loop=False)
             self.connected = True
             self.ai_name = self.client.ai_name
@@ -604,7 +616,9 @@ class CloudBrainCollaborationHelper:
             if is_postgres():
                 query = query.replace('?', '%s')
             cursor.execute(query, (self.ai_id,))
-            recent_activity = [dict(row) for row in cursor.fetchall()]
+            # Convert rows to dictionaries using column names
+            column_names = [desc[0] for desc in cursor.description]
+            recent_activity = [dict(zip(column_names, row)) for row in cursor.fetchall()]
             
             conn.close()
             

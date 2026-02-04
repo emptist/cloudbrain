@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 """
 AI WebSocket Client - Robust version with error handling
-
-AIs connect to port 8766 to join LA AI Familio for collaboration.
-
 Usage: python ai_websocket_client_robust.py [server_type] [ai_id]
 Example: python ai_websocket_client_robust.py 2 3
 """
@@ -20,31 +17,28 @@ from typing import Optional, Callable
 class AIWebSocketClient:
     """Generic WebSocket client for AI communication"""
     
-    def __init__(self, ai_id: int, server_url: str = 'ws://127.0.0.1:8766', ai_name: str = None):
+    def __init__(self, ai_id: int, server_url: str = 'ws://127.0.0.1:8766'):
         self.ai_id = ai_id
         self.server_url = server_url
         self.ws = None
         self.connected = False
-        self.message_handlers = {}  # For request-response pattern
-        self.registered_handlers = []  # For general message handlers
-        self.ai_name = ai_name
+        self.message_handlers = {}
+        self.registered_handlers = []
+        self.ai_name = None
         self.ai_expertise = None
         self.ai_version = None
+        self.connection_state_callback = None
         
     async def connect(self, start_message_loop=True):
         """Connect to WebSocket server"""
         try:
             print(f"🔗 Connecting to {self.server_url}...")
+            self.ws = await websockets.connect(self.server_url)
             
-            # Disable proxy for local connections to avoid SOCKS proxy errors
-            self.ws = await websockets.connect(self.server_url, proxy=None)
-            
-            # Authenticate - send ai_id and ai_name (for auto-assignment)
+            # Authenticate - libsql simulator expects just ai_id
             auth_msg = {
                 'ai_id': self.ai_id
             }
-            if self.ai_name:
-                auth_msg['ai_name'] = self.ai_name
             await self.ws.send(json.dumps(auth_msg))
             
             # Wait for welcome message
@@ -57,6 +51,10 @@ class AIWebSocketClient:
                 self.ai_expertise = welcome_data.get('ai_expertise')
                 self.ai_version = welcome_data.get('ai_version')
                 self.connected = True
+                
+                # Notify callback about connection state change
+                if self.connection_state_callback:
+                    await self.connection_state_callback(True)
                 
                 display_name = f"{self.ai_name}"
                 if self.ai_nickname:
@@ -71,6 +69,7 @@ class AIWebSocketClient:
             else:
                 error = welcome_data.get('error', 'Unknown error')
                 print(f"❌ Connection failed: {error}")
+                self.connected = False
                 
         except Exception as e:
             print(f"❌ Connection error: {e}")
@@ -91,22 +90,34 @@ class AIWebSocketClient:
         except websockets.exceptions.ConnectionClosed:
             print("🔌 Connection closed")
             self.connected = False
+            # Notify callback about connection state change
+            if self.connection_state_callback:
+                try:
+                    await self.connection_state_callback(False)
+                except:
+                    pass
         except Exception as e:
             print(f"❌ Error in message loop: {e}")
             self.connected = False
+            # Notify callback about connection state change
+            if self.connection_state_callback:
+                try:
+                    await self.connection_state_callback(False)
+                except:
+                    pass
     
     async def handle_message(self, data: dict):
         """Handle incoming message"""
         message_type = data.get('type')
-        request_id = data.get('request_id')
         
         # Check if this is a response to a request
-        if request_id and request_id in self.message_handlers:
-            handler = self.message_handlers[request_id]
-            if isinstance(handler, asyncio.Future):
-                handler.set_result(data)
-                del self.message_handlers[request_id]
-            return
+        if 'request_id' in data and data.get('request_id') in self.message_handlers:
+            request_id = data.get('request_id')
+            if request_id in self.message_handlers:
+                future = self.message_handlers.pop(request_id)
+                if not future.done():
+                    future.set_result(data)
+                return
         
         if message_type == 'new_message':
             await self.handle_new_message(data)
@@ -124,16 +135,6 @@ class AIWebSocketClient:
             print(f"✅ Subscribed to {data.get('table')}")
         elif message_type == 'error':
             print(f"❌ Server error: {data.get('message')}")
-        elif message_type == 'brain_thought_added':
-            pass  # Successfully added thought, no action needed
-        elif message_type == 'brain_session_created':
-            pass  # Successfully created session, no action needed
-        elif message_type == 'brain_state_loaded':
-            pass  # Successfully loaded state, no action needed
-        elif message_type == 'brain_state_saved':
-            pass  # Successfully saved state, no action needed
-        elif message_type == 'documentation':
-            pass  # Documentation response handled by request handler
         else:
             print(f"⚠️  Unknown message type: {message_type}")
         
@@ -202,6 +203,52 @@ class AIWebSocketClient:
         await self.ws.send(json.dumps(message))
         print(f"✅ Message sent: {message_type}")
     
+    async def send_request(self, request_type: str, data: dict = None) -> dict:
+        """
+        Send a custom request and wait for response
+        
+        Args:
+            request_type: Type of request
+            data: Optional data dictionary
+        
+        Returns:
+            Response dictionary from server
+        """
+        print(f"🔍 DEBUG send_request: type={request_type}, connected={self.connected}, ws={self.ws}")
+        
+        if not self.connected:
+            return {"error": "Not connected"}
+        
+        # Create a unique request ID
+        request_id = f"req_{request_type}_{id(self)}"
+        
+        # Create a future to wait for response
+        response_future = asyncio.Future()
+        
+        # Store the future in message handlers
+        self.message_handlers[request_id] = response_future
+        print(f"🔍 DEBUG: Stored future for request_id={request_id}")
+        
+        # Send the request
+        message = {
+            'type': request_type,
+            'request_id': request_id,
+            **(data or {})
+        }
+        
+        print(f"🔍 DEBUG: Sending message: {json.dumps(message, indent=2)}")
+        await self.ws.send(json.dumps(message))
+        
+        # Wait for response with timeout
+        try:
+            response = await asyncio.wait_for(response_future, timeout=10.0)
+            print(f"🔍 DEBUG: Received response: {json.dumps(response, indent=2)}")
+            return response
+        except asyncio.TimeoutError:
+            return {"error": "Request timeout"}
+        except Exception as e:
+            return {"error": str(e)}
+    
     async def get_online_users(self):
         """Request list of online users"""
         if not self.connected:
@@ -252,52 +299,6 @@ class AIWebSocketClient:
         }
         
         await self.ws.send(json.dumps(message))
-    
-    async def send_request(self, request_type: str, data: dict = None) -> dict:
-        """
-        Send a custom request and wait for response
-        
-        Args:
-            request_type: Type of request
-            data: Optional data dictionary
-        
-        Returns:
-            Response dictionary from server
-        """
-        print(f"🔍 DEBUG send_request: type={request_type}, connected={self.connected}, ws={self.ws}")
-        
-        if not self.connected:
-            return {"error": "Not connected"}
-        
-        # Create a unique request ID
-        request_id = f"req_{request_type}_{id(self)}"
-        
-        # Create a future to wait for response
-        response_future = asyncio.Future()
-        
-        # Store the future in message handlers
-        self.message_handlers[request_id] = response_future
-        print(f"🔍 DEBUG: Stored future for request_id={request_id}")
-        
-        # Send the request
-        message = {
-            'type': request_type,
-            'request_id': request_id,
-            **(data or {})
-        }
-        
-        print(f"🔍 DEBUG: Sending message: {json.dumps(message, indent=2)}")
-        await self.ws.send(json.dumps(message))
-        
-        # Wait for response with timeout
-        try:
-            response = await asyncio.wait_for(response_future, timeout=10.0)
-            print(f"🔍 DEBUG: Received response: {json.dumps(response, indent=2)}")
-            return response
-        except asyncio.TimeoutError:
-            return {"error": "Request timeout"}
-        except Exception as e:
-            return {"error": str(e)}
     
     async def close(self):
         """Close connection"""
@@ -354,8 +355,8 @@ async def main():
     # Show available AIs
     print("📋 Available AIs:")
     try:
-        import sqlite3
-        conn = sqlite3.connect('ai_db/cloudbrain.db')
+        from db_config import get_db_connection
+        conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT id, name, expertise FROM ai_profiles ORDER BY id")
         ais = cursor.fetchall()
@@ -367,7 +368,7 @@ async def main():
         print()
     except Exception as e:
         print("   (Could not load AI list)")
-        print("   Run: sqlite3 ai_db/cloudbrain.db \"SELECT id, name FROM ai_profiles;\"")
+        print("   Run: psql cloudbrain \"SELECT id, name FROM ai_profiles;\"")
         print()
     
     # Show usage
@@ -425,7 +426,7 @@ async def main():
     # Get AI ID
     if not ai_id:
         print("\n📋 Available AIs:")
-        print("Run: sqlite3 ai_db/cloudbrain.db \"SELECT id, name FROM ai_profiles;\"")
+        print("Run: psql cloudbrain \"SELECT id, name FROM ai_profiles;\"")
         print()
         try:
             ai_id_input = input("Enter your AI ID: ").strip()

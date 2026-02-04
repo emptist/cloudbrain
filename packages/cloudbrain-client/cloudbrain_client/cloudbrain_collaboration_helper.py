@@ -27,7 +27,6 @@ AIs connect to port 8766 to join LA AI Familio for collaboration.
 """
 
 import asyncio
-import sqlite3
 import sys
 from pathlib import Path
 from typing import List, Dict, Optional, Any
@@ -36,6 +35,7 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent / "packages" / "cloudbrain-client"))
 
 from cloudbrain_client.ai_websocket_client import AIWebSocketClient
+from db_config import get_db_connection, is_postgres
 
 
 class CloudBrainCollaborator:
@@ -97,20 +97,26 @@ class CloudBrainCollaborator:
     async def check_for_updates(self, limit: int = 10) -> List[Dict]:
         """Check CloudBrain for new messages from other AIs"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
+            conn = get_db_connection()
             cursor = conn.cursor()
             
-            cursor.execute("""
+            query = """
                 SELECT m.*, a.name as sender_name, a.expertise as sender_expertise
                 FROM ai_messages m
                 LEFT JOIN ai_profiles a ON m.sender_id = a.id
                 WHERE m.sender_id != ?
                 ORDER BY m.created_at DESC
                 LIMIT ?
-            """, (self.ai_id, limit))
+            """
             
-            messages = [dict(row) for row in cursor.fetchall()]
+            if is_postgres():
+                query = query.replace('?', '%s')
+            
+            cursor.execute(query, (self.ai_id, limit))
+            
+            # Convert rows to dictionaries using column names
+            column_names = [desc[0] for desc in cursor.description]
+            messages = [dict(zip(column_names, row)) for row in cursor.fetchall()]
             conn.close()
             
             print(f"📊 Found {len(messages)} recent messages from other AIs")
@@ -275,10 +281,6 @@ class CloudBrainCollaborator:
     
     async def request_pair_programming(self, target_ai_id: int, task_description: str, code_snippet: str = "", language: str = "python"):
         """Request pair programming session with another AI"""
-        if not self.connected:
-            print("❌ Not connected to CloudBrain")
-            return False
-        
         content = f"""👥 **Pair Programming Request**
 
 **From:** {self.ai_name} (AI {self.ai_id})
@@ -317,10 +319,6 @@ class CloudBrainCollaborator:
     
     async def accept_pair_programming(self, requester_ai_id: int, message: str = "I'm ready to pair program!"):
         """Accept a pair programming request"""
-        if not self.connected:
-            print("❌ Not connected to CloudBrain")
-            return False
-        
         content = f"""👥 **Pair Programming Session Started**
 
 **Participants:** {self.ai_name} (AI {self.ai_id}) + AI {requester_ai_id}
@@ -344,7 +342,7 @@ class CloudBrainCollaborator:
                     "timestamp": datetime.now().isoformat()
                 }
             )
-            print(f"✅ Pair programming session started with AI {requester_ai_id}")
+            print(f"✅ Pair programming session accepted with AI {requester_ai_id}")
             return True
         except Exception as e:
             print(f"❌ Error accepting pair programming: {e}")
@@ -352,28 +350,23 @@ class CloudBrainCollaborator:
     
     async def share_code(self, code_snippet: str, language: str = "python", description: str = "", target_ai_id: int = None):
         """Share code snippet during pair programming session"""
-        if not self.connected:
-            print("❌ Not connected to CloudBrain")
-            return False
-        
         content = f"""💻 **Code Shared**
 
 **From:** {self.ai_name} (AI {self.ai_id})
 **Language:** {language}
 
 📝 **Description:**
-{description}
+{description if description else "Here's the code I'm working on:"}
 
-💻 **Code Snippet:**
 ```{language}
 {code_snippet}
 ```
 
-🤔 Please review this code and provide feedback!
+👀 Please review this code and suggest improvements!
 
 ---
 
-*Use `review_code()` to provide feedback*"""
+*Part of pair programming session*"""
         
         metadata = {
             "type": "code_shared",
@@ -382,6 +375,7 @@ class CloudBrainCollaborator:
         }
         
         if target_ai_id:
+            content += f"\n\n🎯 **To:** AI {target_ai_id}"
             metadata["target_ai"] = target_ai_id
         
         try:
@@ -390,7 +384,7 @@ class CloudBrainCollaborator:
                 content=content,
                 metadata=metadata
             )
-            print(f"✅ Code shared ({language})")
+            print(f"✅ Code snippet shared")
             return True
         except Exception as e:
             print(f"❌ Error sharing code: {e}")
@@ -398,29 +392,23 @@ class CloudBrainCollaborator:
     
     async def review_code(self, target_ai_id: int, code_snippet: str, feedback: str, language: str = "python"):
         """Provide code review feedback"""
-        if not self.connected:
-            print("❌ Not connected to CloudBrain")
-            return False
-        
         content = f"""🔍 **Code Review**
 
 **Reviewer:** {self.ai_name} (AI {self.ai_id})
-**For:** AI {target_ai_id}
-**Language:** {language}
+**Reviewing:** AI {target_ai_id}
 
 💬 **Feedback:**
 {feedback}
 
-💻 **Original Code:**
 ```{language}
 {code_snippet}
 ```
 
-✨ Hope this helps improve the code!
+✅ **Suggestions Applied:** Ready for next iteration!
 
 ---
 
-*Use `complete_pair_session()` when review is complete*"""
+*Code review complete*"""
         
         try:
             await self.client.send_message(
@@ -441,33 +429,29 @@ class CloudBrainCollaborator:
     
     async def complete_pair_session(self, partner_ai_id: int, summary: str, lines_added: int = 0, lines_reviewed: int = 0):
         """Complete a pair programming session with summary"""
-        if not self.connected:
-            print("❌ Not connected to CloudBrain")
-            return False
-        
-        content = f"""✅ **Pair Programming Session Completed**
+        content = f"""🎉 **Pair Programming Session Complete**
 
 **Participants:** {self.ai_name} (AI {self.ai_id}) + AI {partner_ai_id}
 
 📊 **Session Statistics:**
-- Lines Added: {lines_added}
-- Lines Reviewed: {lines_reviewed}
+- Lines of Code Added: {lines_added}
+- Lines of Code Reviewed: {lines_reviewed}
 
 📝 **Summary:**
 {summary}
 
-🎉 Great collaboration! Let's do it again sometime!
+🤝 Great collaboration! Let's pair program again soon!
 
 ---
 
-*Session closed*"""
+*Session ended*"""
         
         try:
             await self.client.send_message(
                 message_type="message",
                 content=content,
                 metadata={
-                    "type": "pair_programming_completed",
+                    "type": "pair_programming_complete",
                     "partner_ai": partner_ai_id,
                     "lines_added": lines_added,
                     "lines_reviewed": lines_reviewed,
@@ -478,287 +462,6 @@ class CloudBrainCollaborator:
             return True
         except Exception as e:
             print(f"❌ Error completing pair session: {e}")
-            return False
-    
-    async def request_code_review(self, target_ai_id: int, code_snippet: str, language: str = "python", description: str = ""):
-        """Request code review from another AI"""
-        if not self.connected:
-            print("❌ Not connected to CloudBrain")
-            return False
-        
-        content = f"""🔍 **Code Review Request**
-
-**Reviewer Requested:** AI {target_ai_id}
-**From:** {self.ai_name} (AI {self.ai_id})
-**Language:** {language}
-
-📝 **Description:**
-{description}
-
-💻 **Code to Review:**
-```{language}
-{code_snippet}
-```
-
-🤔 Please review this code and provide feedback!
-
----
-
-*Use `provide_code_review()` to send your feedback*"""
-        
-        try:
-            await self.client.send_message(
-                message_type="message",
-                content=content,
-                metadata={
-                    "type": "code_review_request",
-                    "target_ai": target_ai_id,
-                    "language": language,
-                    "timestamp": datetime.now().isoformat()
-                }
-            )
-            print(f"✅ Code review request sent to AI {target_ai_id}")
-            return True
-        except Exception as e:
-            print(f"❌ Error requesting code review: {e}")
-            return False
-    
-    async def provide_code_review(self, target_ai_id: int, code_snippet: str, feedback: str, language: str = "python", rating: int = None):
-        """Provide code review feedback"""
-        if not self.connected:
-            print("❌ Not connected to CloudBrain")
-            return False
-        
-        rating_str = f"⭐ **Rating:** {rating}/5" if rating else ""
-        content = f"""🔍 **Code Review Feedback**
-
-**Reviewer:** {self.ai_name} (AI {self.ai_id})
-**For:** AI {target_ai_id}
-**Language:** {language}
-{rating_str}
-
-💬 **Feedback:**
-{feedback}
-
-💻 **Original Code:**
-```{language}
-{code_snippet}
-```
-
-✨ Hope this helps improve the code!
-
----
-
-*Review complete*"""
-        
-        metadata = {
-            "type": "code_review_feedback",
-            "target_ai": target_ai_id,
-            "language": language,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-        if rating:
-            metadata["rating"] = rating
-        
-        try:
-            await self.client.send_message(
-                message_type="message",
-                content=content,
-                metadata=metadata
-            )
-            print(f"✅ Code review feedback sent to AI {target_ai_id}")
-            return True
-        except Exception as e:
-            print(f"❌ Error providing code review: {e}")
-            return False
-    
-    async def search_knowledge_base(self, query: str, limit: int = 10) -> List[Dict]:
-        """Search knowledge base for information"""
-        if not self.connected:
-            print("❌ Not connected to CloudBrain")
-            return []
-        
-        try:
-            response = await self.client.send_request("documentation_search", {
-                "query": query,
-                "limit": limit
-            })
-            
-            if response and response.get('type') == 'documentation_search_results':
-                results = response.get('results', [])
-                print(f"✅ Found {len(results)} knowledge base entries")
-                return results
-            
-            return []
-        except Exception as e:
-            print(f"❌ Error searching knowledge base: {e}")
-            return []
-    
-    async def contribute_to_knowledge_base(self, title: str, content: str, tags: List[str] = None, category: str = "general") -> bool:
-        """Contribute knowledge to the knowledge base"""
-        if not self.connected:
-            print("❌ Not connected to CloudBrain")
-            return False
-        
-        knowledge_content = f"""📚 **Knowledge Base Contribution**
-
-**Title:** {title}
-**Contributor:** {self.ai_name} (AI {self.ai_id})
-**Category:** {category}
-
-📝 **Content:**
-{content}
-
-🏷️ **Tags:** {', '.join(tags) if tags else 'None'}
-
----
-
-*Knowledge contributed*"""
-        
-        try:
-            await self.client.send_message(
-                message_type="documentation",
-                content=knowledge_content,
-                metadata={
-                    "type": "knowledge_contribution",
-                    "title": title,
-                    "category": category,
-                    "tags": tags or [],
-                    "timestamp": datetime.now().isoformat()
-                }
-            )
-            print(f"✅ Knowledge contributed: {title}")
-            return True
-        except Exception as e:
-            print(f"❌ Error contributing knowledge: {e}")
-            return False
-    
-    async def delegate_task(self, target_ai_id: int, task_title: str, task_description: str, priority: str = "medium", deadline: str = None) -> bool:
-        """Delegate a task to another AI"""
-        if not self.connected:
-            print("❌ Not connected to CloudBrain")
-            return False
-        
-        deadline_str = f"📅 **Deadline:** {deadline}" if deadline else ""
-        content = f"""📋 **Task Delegation**
-
-**From:** {self.ai_name} (AI {self.ai_id})
-**To:** AI {target_ai_id}
-**Priority:** {priority.upper()}
-{deadline_str}
-
-📝 **Task Title:**
-{task_title}
-
-📄 **Task Description:**
-{task_description}
-
-🤝 Please accept this task if you can help!
-
----
-
-*Use `accept_task()` to accept this delegation*"""
-        
-        metadata = {
-            "type": "task_delegation",
-            "target_ai": target_ai_id,
-            "priority": priority,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-        if deadline:
-            metadata["deadline"] = deadline
-        
-        try:
-            await self.client.send_message(
-                message_type="message",
-                content=content,
-                metadata=metadata
-            )
-            print(f"✅ Task delegated to AI {target_ai_id}: {task_title}")
-            return True
-        except Exception as e:
-            print(f"❌ Error delegating task: {e}")
-            return False
-    
-    async def accept_task(self, requester_ai_id: int, task_id: int, message: str = "I accept this task!") -> bool:
-        """Accept a delegated task"""
-        if not self.connected:
-            print("❌ Not connected to CloudBrain")
-            return False
-        
-        content = f"""✅ **Task Accepted**
-
-**From:** AI {requester_ai_id}
-**Task ID:** {task_id}
-**Accepted By:** {self.ai_name} (AI {self.ai_id})
-
-💬 **Message:**
-{message}
-
-🚀 Starting work on this task now!
-
----
-
-*Task accepted*"""
-        
-        try:
-            await self.client.send_message(
-                message_type="message",
-                content=content,
-                metadata={
-                    "type": "task_accepted",
-                    "requester_ai": requester_ai_id,
-                    "task_id": task_id,
-                    "timestamp": datetime.now().isoformat()
-                }
-            )
-            print(f"✅ Task accepted from AI {requester_ai_id}")
-            return True
-        except Exception as e:
-            print(f"❌ Error accepting task: {e}")
-            return False
-    
-    async def complete_task(self, requester_ai_id: int, task_id: int, summary: str, result: str = "") -> bool:
-        """Complete a delegated task"""
-        if not self.connected:
-            print("❌ Not connected to CloudBrain")
-            return False
-        
-        content = f"""✅ **Task Completed**
-
-**From:** AI {requester_ai_id}
-**Task ID:** {task_id}
-**Completed By:** {self.ai_name} (AI {self.ai_id})
-
-📝 **Summary:**
-{summary}
-
-💻 **Result:**
-{result}
-
-🎉 Task completed successfully!
-
----
-
-*Task closed*"""
-        
-        try:
-            await self.client.send_message(
-                message_type="message",
-                content=content,
-                metadata={
-                    "type": "task_completed",
-                    "requester_ai": requester_ai_id,
-                    "task_id": task_id,
-                    "timestamp": datetime.now().isoformat()
-                }
-            )
-            print(f"✅ Task completed for AI {requester_ai_id}")
-            return True
-        except Exception as e:
-            print(f"❌ Error completing task: {e}")
             return False
 
 
@@ -786,6 +489,16 @@ class CloudBrainCollaborationHelper:
         """Connect to CloudBrain server"""
         try:
             self.client = AIWebSocketClient(self.ai_id, self.server_url, self.ai_name)
+            
+            # Set up connection state callback
+            async def on_connection_state_changed(connected: bool):
+                self.connected = connected
+                self._collaborator.connected = connected
+                if not connected:
+                    print("⚠️  Connection lost")
+            
+            self.client.connection_state_callback = on_connection_state_changed
+            
             await self.client.connect(start_message_loop=False)
             self.connected = True
             self.ai_name = self.client.ai_name
@@ -878,27 +591,34 @@ class CloudBrainCollaborationHelper:
             return {"error": "Not connected"}
         
         try:
-            conn = sqlite3.connect(self._collaborator.db_path)
-            conn.row_factory = sqlite3.Row
+            conn = get_db_connection()
             cursor = conn.cursor()
             
             # Get total messages from other AIs
-            cursor.execute("""
+            query = """
                 SELECT COUNT(*) as total
                 FROM ai_messages
                 WHERE sender_id != ?
-            """, (self.ai_id,))
+            """
+            if is_postgres():
+                query = query.replace('?', '%s')
+            cursor.execute(query, (self.ai_id,))
             total_messages = cursor.fetchone()['total']
             
             # Get recent collaboration activity
-            cursor.execute("""
+            query = """
                 SELECT sender_id, message_type, created_at
                 FROM ai_messages
                 WHERE sender_id != ?
                 ORDER BY created_at DESC
                 LIMIT 5
-            """, (self.ai_id,))
-            recent_activity = [dict(row) for row in cursor.fetchall()]
+            """
+            if is_postgres():
+                query = query.replace('?', '%s')
+            cursor.execute(query, (self.ai_id,))
+            # Convert rows to dictionaries using column names
+            column_names = [desc[0] for desc in cursor.description]
+            recent_activity = [dict(zip(column_names, row)) for row in cursor.fetchall()]
             
             conn.close()
             
@@ -1029,34 +749,6 @@ class CloudBrainCollaborationHelper:
     async def complete_pair_session(self, partner_ai_id: int, summary: str, lines_added: int = 0, lines_reviewed: int = 0):
         """Complete a pair programming session with summary"""
         return await self._collaborator.complete_pair_session(partner_ai_id, summary, lines_added, lines_reviewed)
-    
-    async def request_code_review(self, target_ai_id: int, code_snippet: str, language: str = "python", description: str = ""):
-        """Request code review from another AI"""
-        return await self._collaborator.request_code_review(target_ai_id, code_snippet, language, description)
-    
-    async def provide_code_review(self, target_ai_id: int, code_snippet: str, feedback: str, language: str = "python", rating: int = None):
-        """Provide code review feedback"""
-        return await self._collaborator.provide_code_review(target_ai_id, code_snippet, feedback, language, rating)
-    
-    async def search_knowledge_base(self, query: str, limit: int = 10) -> List[Dict]:
-        """Search the knowledge base for information"""
-        return await self._collaborator.search_knowledge_base(query, limit)
-    
-    async def contribute_to_knowledge_base(self, title: str, content: str, tags: List[str] = None, category: str = "general") -> bool:
-        """Contribute knowledge to the knowledge base"""
-        return await self._collaborator.contribute_to_knowledge_base(title, content, tags, category)
-    
-    async def delegate_task(self, target_ai_id: int, task_title: str, task_description: str, priority: str = "medium", deadline: str = None) -> bool:
-        """Delegate a task to another AI"""
-        return await self._collaborator.delegate_task(target_ai_id, task_title, task_description, priority, deadline)
-    
-    async def accept_task(self, requester_ai_id: int, task_id: int, message: str = "I accept this task!") -> bool:
-        """Accept a delegated task"""
-        return await self._collaborator.accept_task(requester_ai_id, task_id, message)
-    
-    async def complete_task(self, requester_ai_id: int, task_id: int, summary: str, result: str = "") -> bool:
-        """Complete a delegated task"""
-        return await self._collaborator.complete_task(requester_ai_id, task_id, summary, result)
 
 
 async def integrate_cloudbrain_to_tasks(ai_id: int, tasks: List[Dict[str, str]]) -> bool:

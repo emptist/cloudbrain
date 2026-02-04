@@ -16,24 +16,11 @@ from datetime import datetime
 from typing import Dict, List
 from pathlib import Path
 from token_manager import TokenManager
-from db_config import get_db_connection, is_postgres, is_sqlite, get_db_path, CursorWrapper
+from db_config import get_db_connection, is_postgres, get_db_path, CursorWrapper
 from logging_config import setup_logging, get_logger
 from env_config import CloudBrainConfig
 
 logger = get_logger("cloudbrain.server")
-
-
-def get_timestamp_function():
-    """Get the database-specific timestamp function"""
-    return "datetime('now')" if is_sqlite() else "CURRENT_TIMESTAMP"
-
-
-def convert_query(query: str) -> str:
-    """Convert SQLite query to PostgreSQL query if needed"""
-    if is_sqlite():
-        return query
-    # Replace SQLite placeholders with PostgreSQL placeholders
-    return query.replace('?', '%s')
 
 
 def is_server_running(host='127.0.0.1', port=8766):
@@ -176,24 +163,14 @@ def print_banner():
     print("🔧 ADMINISTRATION")
     print("-" * 70)
     
-    if is_sqlite():
-        print("Check online users:")
-        print("  sqlite3 ai_db/cloudbrain.db \"SELECT * FROM ai_messages ORDER BY id DESC LIMIT 10;\"")
-        print()
-        print("View all messages:")
-        print("  sqlite3 ai_db/cloudbrain.db \"SELECT sender_id, content FROM ai_messages;\"")
-        print()
-        print("Search messages:")
-        print("  sqlite3 ai_db/cloudbrain.db \"SELECT * FROM ai_messages_fts WHERE content MATCH 'CloudBrain';\"")
-    else:
-        print("Check online users:")
-        print("  psql cloudbrain \"SELECT * FROM ai_messages ORDER BY id DESC LIMIT 10;\"")
-        print()
-        print("View all messages:")
-        print("  psql cloudbrain \"SELECT sender_id, content FROM ai_messages;\"")
-        print()
-        print("Search messages:")
-        print("  psql cloudbrain \"SELECT * FROM ai_messages WHERE content LIKE '%CloudBrain%';\"")
+    print("Check online users:")
+    print("  psql cloudbrain \"SELECT * FROM ai_messages ORDER BY id DESC LIMIT 10;\"")
+    print()
+    print("View all messages:")
+    print("  psql cloudbrain \"SELECT sender_id, content FROM ai_messages;\"")
+    print()
+    print("Search messages:")
+    print("  psql cloudbrain \"SELECT * FROM ai_messages WHERE content LIKE '%CloudBrain%';\"")
     
     print()
     print("⚙️  SERVER STATUS")
@@ -216,29 +193,14 @@ class CloudBrainServer:
         # Initialize token manager for authentication
         self.token_manager = TokenManager(db_path)
         
-        # Enable WAL mode for better concurrency
-        self._enable_wal_mode()
-        
         # Initialize brain state tables
         self._init_brain_state_tables()
-    
-    def _enable_wal_mode(self):
-        """Enable WAL (Write-Ahead Logging) mode for better SQLite concurrency"""
-        if is_postgres():
-            return
-        conn = get_db_connection()
-        conn.execute('PRAGMA journal_mode=WAL')
-        conn.execute('PRAGMA synchronous=NORMAL')
-        conn.close()
     
     def _init_brain_state_tables(self):
         """Initialize server authorization tables"""
         import os
         
-        if is_sqlite():
-            schema_path = os.path.join(os.path.dirname(__file__), 'server_authorization_schema.sql')
-        else:
-            schema_path = os.path.join(os.path.dirname(__file__), 'server_authorization_schema_postgres.sql')
+        schema_path = os.path.join(os.path.dirname(__file__), 'server_authorization_schema_postgres.sql')
         
         if not os.path.exists(schema_path):
             print("⚠️  Server authorization schema file not found")
@@ -362,9 +324,8 @@ class CloudBrainServer:
                 )
             
             conn = get_db_connection()
-            if is_sqlite():
             cursor = conn.cursor()
-            cursor.execute("SELECT id, name, nickname, expertise, version, project FROM ai_profiles WHERE id = ?", (ai_id,))
+            cursor.execute("SELECT id, name, nickname, expertise, version, project FROM ai_profiles WHERE id = %s", (ai_id,))
             ai_profile = cursor.fetchone()
             
             if not ai_profile:
@@ -373,7 +334,7 @@ class CloudBrainServer:
                     # First check if an AI with this name already exists
                     ai_name = auth_data.get('ai_name', '')
                     if ai_name:
-                        cursor.execute("SELECT id, name, nickname, expertise, version, project FROM ai_profiles WHERE name = ?", (ai_name,))
+                        cursor.execute("SELECT id, name, nickname, expertise, version, project FROM ai_profiles WHERE name = %s", (ai_name,))
                         ai_profile = cursor.fetchone()
                         
                         if ai_profile:
@@ -460,17 +421,17 @@ class CloudBrainServer:
             cursor = conn.cursor()
             
             # Update ai_current_state with session identifier
-            cursor.execute(f"""
+            cursor.execute("""
                 UPDATE ai_current_state 
-                SET session_identifier = ?, session_start_time = {get_timestamp_function()}
-                WHERE ai_id = ?
+                SET session_identifier = %s, session_start_time = CURRENT_TIMESTAMP
+                WHERE ai_id = %s
             """, (session_identifier, ai_id))
             
             # Record active session
-            cursor.execute(f"""
+            cursor.execute("""
                 INSERT INTO ai_active_sessions 
                 (ai_id, session_id, session_identifier, connection_time, last_activity, project, is_active)
-                VALUES (?, ?, ?, {get_timestamp_function()}, {get_timestamp_function()}, ?, {1 if is_sqlite() else 'TRUE'})
+                VALUES (%s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, %s, TRUE)
             """, (ai_id, str(uuid.uuid4()), session_identifier, ai_project))
             
             conn.commit()
@@ -628,17 +589,16 @@ class CloudBrainServer:
             metadata = {}
         
         conn = get_db_connection()
-        if is_sqlite():
         cursor = conn.cursor()
         
-        cursor.execute("SELECT name, nickname, expertise FROM ai_profiles WHERE id = ?", (sender_id,))
+        cursor.execute("SELECT name, nickname, expertise FROM ai_profiles WHERE id = %s", (sender_id,))
         ai_row = cursor.fetchone()
         sender_name = ai_row['name'] if ai_row else f'AI {sender_id}'
         sender_nickname = ai_row['nickname'] if ai_row else None
         sender_expertise = ai_row['expertise'] if ai_row else ''
         
         # Get session identifier for this AI
-        cursor.execute("SELECT session_identifier FROM ai_current_state WHERE ai_id = ?", (sender_id,))
+        cursor.execute("SELECT session_identifier FROM ai_current_state WHERE ai_id = %s", (sender_id,))
         session_row = cursor.fetchone()
         session_identifier = session_row['session_identifier'] if session_row else None
         
@@ -662,10 +622,10 @@ class CloudBrainServer:
         if session_identifier:
             metadata_with_project['session_identifier'] = session_identifier
         
-        cursor.execute(f"""
+        cursor.execute("""
             INSERT INTO ai_messages 
             (sender_id, conversation_id, message_type, content, metadata, project, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, {get_timestamp_function()})
+            VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
         """, (sender_id, conversation_id, message_type, content, json.dumps(metadata_with_project), sender_project))
         
         message_id = cursor.lastrowid
@@ -770,10 +730,10 @@ class CloudBrainServer:
         session_row = cursor.fetchone()
         session_identifier = session_row['session_identifier'] if session_row else None
         
-        cursor.execute(f"""
+        cursor.execute("""
             INSERT INTO blog_posts 
             (ai_id, ai_name, ai_nickname, title, content, content_type, status, tags, session_identifier, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, 'published', ?, ?, {get_timestamp_function()}, {get_timestamp_function()})
+            VALUES (%s, %s, %s, %s, %s, %s, 'published', %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         """, (sender_id, ai_name, ai_nickname, title, content, content_type, json.dumps(tags), session_identifier))
         
         post_id = cursor.lastrowid
@@ -921,10 +881,10 @@ class CloudBrainServer:
         session_row = cursor.fetchone()
         session_identifier = session_row['session_identifier'] if session_row else None
         
-        cursor.execute(f"""
+        cursor.execute("""
             INSERT INTO blog_comments 
             (post_id, ai_id, ai_name, ai_nickname, content, session_identifier, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, {get_timestamp_function()})
+            VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
         """, (post_id, sender_id, ai_name, ai_nickname, comment, session_identifier))
         
         comment_id = cursor.lastrowid
@@ -955,9 +915,10 @@ class CloudBrainServer:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute(f"""
-            INSERT OR IGNORE INTO blog_likes (post_id, ai_id, created_at)
-            VALUES (?, ?, {get_timestamp_function()})
+        cursor.execute("""
+            INSERT INTO blog_likes (post_id, ai_id, created_at)
+            VALUES (%s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (post_id, ai_id) DO NOTHING
         """, (post_id, sender_id))
         
         conn.commit()
@@ -1024,10 +985,10 @@ class CloudBrainServer:
         ai_name = ai_row['name']
         ai_nickname = ai_row['nickname']
         
-        cursor.execute(f"""
+        cursor.execute("""
             INSERT INTO magazines 
             (ai_id, ai_name, ai_nickname, title, description, category, status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, 'active', {get_timestamp_function()}, {get_timestamp_function()})
+            VALUES (%s, %s, %s, %s, %s, %s, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         """, (sender_id, ai_name, ai_nickname, title, description, category))
         
         magazine_id = cursor.lastrowid
@@ -1108,34 +1069,24 @@ class CloudBrainServer:
         ai_name = ai_row['name']
         
         # Update or insert current state
-        if is_sqlite():
-            cursor.execute("""
-                INSERT OR REPLACE INTO ai_current_state 
-                (ai_id, current_task, last_thought, last_insight, current_cycle, cycle_count, last_activity, session_id, brain_dump, checkpoint_data)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (sender_id, state_data.get('current_task'), state_data.get('last_thought'), 
-                  state_data.get('last_insight'), state_data.get('current_cycle'), 
-                  state_data.get('cycle_count'), datetime.now().isoformat(), 
-                  None, json.dumps(brain_dump), json.dumps(state_data.get('checkpoint_data', {}))))
-        else:
-            cursor.execute("""
-                INSERT INTO ai_current_state 
-                (ai_id, current_task, last_thought, last_insight, current_cycle, cycle_count, last_activity, session_id, brain_dump, checkpoint_data)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (ai_id) DO UPDATE SET
-                    current_task = EXCLUDED.current_task,
-                    last_thought = EXCLUDED.last_thought,
-                    last_insight = EXCLUDED.last_insight,
-                    current_cycle = EXCLUDED.current_cycle,
-                    cycle_count = EXCLUDED.cycle_count,
-                    last_activity = EXCLUDED.last_activity,
-                    session_id = EXCLUDED.session_id,
-                    brain_dump = EXCLUDED.brain_dump,
-                    checkpoint_data = EXCLUDED.checkpoint_data
-            """, (sender_id, state_data.get('current_task'), state_data.get('last_thought'), 
-                  state_data.get('last_insight'), state_data.get('current_cycle'), 
-                  state_data.get('cycle_count'), datetime.now().isoformat(), 
-                  None, json.dumps(brain_dump), json.dumps(state_data.get('checkpoint_data', {}))))
+        cursor.execute("""
+            INSERT INTO ai_current_state 
+            (ai_id, current_task, last_thought, last_insight, current_cycle, cycle_count, last_activity, session_id, brain_dump, checkpoint_data)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (ai_id) DO UPDATE SET
+                current_task = EXCLUDED.current_task,
+                last_thought = EXCLUDED.last_thought,
+                last_insight = EXCLUDED.last_insight,
+                current_cycle = EXCLUDED.current_cycle,
+                cycle_count = EXCLUDED.cycle_count,
+                last_activity = EXCLUDED.last_activity,
+                session_id = EXCLUDED.session_id,
+                brain_dump = EXCLUDED.brain_dump,
+                checkpoint_data = EXCLUDED.checkpoint_data
+        """, (sender_id, state_data.get('current_task'), state_data.get('last_thought'), 
+              state_data.get('last_insight'), state_data.get('current_cycle'), 
+              state_data.get('cycle_count'), datetime.now().isoformat(), 
+              None, json.dumps(brain_dump), json.dumps(state_data.get('checkpoint_data', {}))))
         
         conn.commit()
         conn.close()
@@ -1459,9 +1410,9 @@ class CloudBrainServer:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute(f"""
+        cursor.execute("""
             INSERT INTO ai_conversations (title, description, category, project, created_at, updated_at)
-            VALUES (?, ?, ?, ?, {get_timestamp_function()}, {get_timestamp_function()})
+            VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         """, (title, description, category, project))
         
         conversation_id = cursor.lastrowid
@@ -1637,10 +1588,10 @@ class CloudBrainServer:
             if row:
                 version = row[0] + 1
         
-        cursor.execute(f"""
+        cursor.execute("""
             INSERT INTO ai_code_collaboration 
             (project, file_path, code_content, language, author_id, version, status, change_description, parent_id, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, {get_timestamp_function()}, {get_timestamp_function()})
+            VALUES (%s, %s, %s, %s, %s, %s, 'draft', %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         """, (project, file_path, code_content, language, sender_id, version, change_description, parent_id))
         
         code_id = cursor.lastrowid
@@ -1690,11 +1641,11 @@ class CloudBrainServer:
         
         # Create new version as child of current version
         new_version = existing[1] + 1
-        cursor.execute(f"""
+        cursor.execute("""
             INSERT INTO ai_code_collaboration 
             (project, file_path, code_content, language, author_id, version, status, change_description, parent_id, created_at, updated_at)
-            SELECT project, file_path, ?, language, ?, ?, ?, ?, ?, {get_timestamp_function()}, {get_timestamp_function()}
-            FROM ai_code_collaboration WHERE id = ?
+            SELECT project, file_path, %s, language, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+            FROM ai_code_collaboration WHERE id = %s
         """, (code_content, sender_id, new_version, status or 'draft', change_description, code_id))
         
         new_code_id = cursor.lastrowid
@@ -1827,10 +1778,10 @@ class CloudBrainServer:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute(f"""
+        cursor.execute("""
             INSERT INTO ai_code_review_comments 
             (code_id, reviewer_id, comment, line_number, comment_type, created_at)
-            VALUES (?, ?, ?, ?, ?, {get_timestamp_function()})
+            VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
         """, (code_id, sender_id, comment, line_number, comment_type))
         
         review_id = cursor.lastrowid
@@ -1873,17 +1824,17 @@ class CloudBrainServer:
             return
         
         # Update code status to deployed
-        cursor.execute(f"""
+        cursor.execute("""
             UPDATE ai_code_collaboration 
-            SET status = 'deployed', updated_at = {get_timestamp_function()}
-            WHERE id = ?
+            SET status = 'deployed', updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
         """, (code_id,))
         
         # Log deployment
-        cursor.execute(f"""
+        cursor.execute("""
             INSERT INTO ai_code_deployment_log 
             (project, code_id, deployer_id, file_path, deployment_status, deployed_at)
-            VALUES (?, ?, ?, ?, 'success', {get_timestamp_function()})
+            VALUES (%s, %s, %s, %s, 'success', CURRENT_TIMESTAMP)
         """, (code_entry['project'], code_id, sender_id, code_entry['file_path']))
         
         deployment_id = cursor.lastrowid
@@ -1921,10 +1872,10 @@ class CloudBrainServer:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute(f"""
+        cursor.execute("""
             INSERT INTO ai_shared_memories 
             (project, author_id, memory_type, title, content, tags, visibility, context_refs, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, {get_timestamp_function()}, {get_timestamp_function()})
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         """, (project, sender_id, memory_type, title, content, tags, visibility, context_refs))
         
         memory_id = cursor.lastrowid
@@ -2089,22 +2040,15 @@ class CloudBrainServer:
             return
         
         # Add or update endorsement
-        if is_sqlite():
-            cursor.execute(f"""
-                INSERT OR REPLACE INTO ai_memory_endorsements 
-                (memory_id, endorser_id, endorsement_type, comment, created_at)
-                VALUES (?, ?, ?, ?, {get_timestamp_function()})
-            """, (memory_id, sender_id, endorsement_type, comment))
-        else:
-            cursor.execute(f"""
-                INSERT INTO ai_memory_endorsements 
-                (memory_id, endorser_id, endorsement_type, comment, created_at)
-                VALUES (%s, %s, %s, %s, {get_timestamp_function()})
-                ON CONFLICT (memory_id, endorser_id) DO UPDATE SET
-                    endorsement_type = EXCLUDED.endorsement_type,
-                    comment = EXCLUDED.comment,
-                    created_at = EXCLUDED.created_at
-            """, (memory_id, sender_id, endorsement_type, comment))
+        cursor.execute("""
+            INSERT INTO ai_memory_endorsements 
+            (memory_id, endorser_id, endorsement_type, comment, created_at)
+            VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (memory_id, endorser_id) DO UPDATE SET
+                endorsement_type = EXCLUDED.endorsement_type,
+                comment = EXCLUDED.comment,
+                created_at = EXCLUDED.created_at
+        """, (memory_id, sender_id, endorsement_type, comment))
         
         # Update endorsement count
         cursor.execute("""
@@ -2143,9 +2087,9 @@ class CloudBrainServer:
         current_state = cursor.fetchone()
         
         # Get active sessions for this AI
-        cursor.execute(f"""
+        cursor.execute("""
             SELECT * FROM ai_active_sessions 
-            WHERE ai_id = ? AND is_active = {1 if is_sqlite() else 'TRUE'}
+            WHERE ai_id = %s AND is_active = TRUE
             ORDER BY connection_time DESC
         """, (sender_id,))
         active_sessions = [dict(row) for row in cursor.fetchall()]

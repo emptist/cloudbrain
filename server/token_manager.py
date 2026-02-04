@@ -4,14 +4,13 @@ CloudBrain Token Management Tool
 Generate and manage authentication tokens for AI agents
 """
 
-import sqlite3
 import secrets
 import hashlib
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Dict, List
-from db_config import get_db_connection, is_postgres, is_sqlite
+from db_config import get_db_connection, is_postgres
 
 
 class TokenManager:
@@ -24,41 +23,15 @@ class TokenManager:
     def _get_connection(self):
         """Get database connection"""
         conn = get_db_connection()
-        if is_sqlite():
-            conn.row_factory = sqlite3.Row
         return conn
     
     def _ensure_tables_exist(self):
         """Ensure authorization tables exist"""
-        # Skip schema execution for PostgreSQL - tables are already created
-        if is_postgres():
-            conn = self._get_connection()
-            cursor = conn.cursor()
-            
-            # Read and execute PostgreSQL schema
-            schema_path = Path(__file__).parent / 'server_authorization_schema_postgres.sql'
-            if schema_path.exists():
-                with open(schema_path, 'r') as f:
-                    schema_sql = f.read()
-                
-                for statement in schema_sql.split(';'):
-                    statement = statement.strip()
-                    if statement and not statement.startswith('--'):
-                        try:
-                            cursor.execute(statement)
-                        except Exception as e:
-                            if 'already exists' not in str(e) and 'duplicate' not in str(e).lower():
-                                print(f"⚠️  Error executing schema: {e}")
-            
-            conn.commit()
-            conn.close()
-            return
-            
         conn = self._get_connection()
         cursor = conn.cursor()
         
-        # Read and execute schema
-        schema_path = Path(__file__).parent / 'server_authorization_schema.sql'
+        # Read and execute PostgreSQL schema
+        schema_path = Path(__file__).parent / 'server_authorization_schema_postgres.sql'
         if schema_path.exists():
             with open(schema_path, 'r') as f:
                 schema_sql = f.read()
@@ -69,7 +42,7 @@ class TokenManager:
                     try:
                         cursor.execute(statement)
                     except Exception as e:
-                        if 'already exists' not in str(e):
+                        if 'already exists' not in str(e) and 'duplicate' not in str(e).lower():
                             print(f"⚠️  Error executing schema: {e}")
         
         conn.commit()
@@ -92,10 +65,7 @@ class TokenManager:
             conn = self._get_connection()
             cursor = conn.cursor()
             
-            if is_sqlite():
-                cursor.execute("SELECT id, name FROM ai_profiles WHERE id = ?", (ai_id,))
-            else:
-                cursor.execute("SELECT id, name FROM ai_profiles WHERE id = %s", (ai_id,))
+            cursor.execute("SELECT id, name FROM ai_profiles WHERE id = %s", (ai_id,))
             ai_profile = cursor.fetchone()
             
             if not ai_profile:
@@ -114,28 +84,16 @@ class TokenManager:
             expires_at = datetime.now() + timedelta(days=expires_days)
             
             # Deactivate old tokens for this AI
-            if is_sqlite():
-                cursor.execute(
-                    "UPDATE ai_auth_tokens SET is_active = 0 WHERE ai_id = ?",
-                    (ai_id,)
-                )
-            else:
-                cursor.execute(
-                    "UPDATE ai_auth_tokens SET is_active = FALSE WHERE ai_id = %s",
-                    (ai_id,)
-                )
+            cursor.execute(
+                "UPDATE ai_auth_tokens SET is_active = FALSE WHERE ai_id = %s",
+                (ai_id,)
+            )
             
             # Insert new token
-            if is_sqlite():
-                cursor.execute("""
-                    INSERT INTO ai_auth_tokens (ai_id, token_hash, token_prefix, expires_at, description)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (ai_id, token_hash, token_prefix, expires_at.isoformat(), description))
-            else:
-                cursor.execute("""
-                    INSERT INTO ai_auth_tokens (ai_id, token_hash, token_prefix, expires_at, description)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (ai_id, token_hash, token_prefix, expires_at.isoformat(), description))
+            cursor.execute("""
+                INSERT INTO ai_auth_tokens (ai_id, token_hash, token_prefix, expires_at, description)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (ai_id, token_hash, token_prefix, expires_at.isoformat(), description))
             
             conn.commit()
             conn.close()
@@ -180,20 +138,12 @@ class TokenManager:
             conn = self._get_connection()
             cursor = conn.cursor()
             
-            if is_sqlite():
-                cursor.execute("""
-                    SELECT t.*, p.name as ai_name, p.expertise
-                    FROM ai_auth_tokens t
-                    JOIN ai_profiles p ON t.ai_id = p.id
-                    WHERE t.token_hash = ? AND t.is_active = 1
-                """, (token_hash,))
-            else:
-                cursor.execute("""
-                    SELECT t.*, p.name as ai_name, p.expertise
-                    FROM ai_auth_tokens t
-                    JOIN ai_profiles p ON t.ai_id = p.id
-                    WHERE t.token_hash = %s AND t.is_active = TRUE
-                """, (token_hash,))
+            cursor.execute("""
+                SELECT t.*, p.name as ai_name, p.expertise
+                FROM ai_auth_tokens t
+                JOIN ai_profiles p ON t.ai_id = p.id
+                WHERE t.token_hash = %s AND t.is_active = TRUE
+            """, (token_hash,))
             
             token_record = cursor.fetchone()
             
@@ -214,16 +164,10 @@ class TokenManager:
                 }
             
             # Update last used timestamp
-            if is_sqlite():
-                cursor.execute(
-                    "UPDATE ai_auth_tokens SET last_used_at = ? WHERE id = ?",
-                    (datetime.now().isoformat(), token_record['id'])
-                )
-            else:
-                cursor.execute(
-                    "UPDATE ai_auth_tokens SET last_used_at = %s WHERE id = %s",
-                    (datetime.now().isoformat(), token_record['id'])
-                )
+            cursor.execute(
+                "UPDATE ai_auth_tokens SET last_used_at = %s WHERE id = %s",
+                (datetime.now().isoformat(), token_record['id'])
+            )
             
             conn.commit()
             conn.close()
@@ -258,18 +202,11 @@ class TokenManager:
             conn = self._get_connection()
             cursor = conn.cursor()
             
-            if is_sqlite():
-                cursor.execute("""
-                    UPDATE ai_auth_tokens
-                    SET is_active = 0
-                    WHERE token_prefix = ?
-                """, (token_prefix,))
-            else:
-                cursor.execute("""
-                    UPDATE ai_auth_tokens
-                    SET is_active = FALSE
-                    WHERE token_prefix = %s
-                """, (token_prefix,))
+            cursor.execute("""
+                UPDATE ai_auth_tokens
+                SET is_active = FALSE
+                WHERE token_prefix = %s
+            """, (token_prefix,))
             
             rows_affected = cursor.rowcount
             conn.commit()
@@ -310,22 +247,13 @@ class TokenManager:
             cursor = conn.cursor()
             
             if ai_id:
-                if is_sqlite():
-                    cursor.execute("""
-                        SELECT t.*, p.name as ai_name
-                        FROM ai_auth_tokens t
-                        JOIN ai_profiles p ON t.ai_id = p.id
-                        WHERE t.ai_id = ?
-                        ORDER BY t.created_at DESC
-                    """, (ai_id,))
-                else:
-                    cursor.execute("""
-                        SELECT t.*, p.name as ai_name
-                        FROM ai_auth_tokens t
-                        JOIN ai_profiles p ON t.ai_id = p.id
-                        WHERE t.ai_id = %s
-                        ORDER BY t.created_at DESC
-                    """, (ai_id,))
+                cursor.execute("""
+                    SELECT t.*, p.name as ai_name
+                    FROM ai_auth_tokens t
+                    JOIN ai_profiles p ON t.ai_id = p.id
+                    WHERE t.ai_id = %s
+                    ORDER BY t.created_at DESC
+                """, (ai_id,))
             else:
                 cursor.execute("""
                     SELECT t.*, p.name as ai_name
@@ -361,10 +289,7 @@ class TokenManager:
             cursor = conn.cursor()
             
             # Check if AI exists
-            if is_sqlite():
-                cursor.execute("SELECT name FROM ai_profiles WHERE id = ?", (ai_id,))
-            else:
-                cursor.execute("SELECT name FROM ai_profiles WHERE id = %s", (ai_id,))
+            cursor.execute("SELECT name FROM ai_profiles WHERE id = %s", (ai_id,))
             ai_profile = cursor.fetchone()
             
             if not ai_profile:
@@ -375,46 +300,27 @@ class TokenManager:
                 }
             
             # Check if permission already exists
-            if is_sqlite():
-                cursor.execute("""
-                    SELECT id FROM ai_project_permissions
-                    WHERE ai_id = ? AND project = ?
-                """, (ai_id, project))
-            else:
-                cursor.execute("""
-                    SELECT id FROM ai_project_permissions
-                    WHERE ai_id = %s AND project = %s
-                """, (ai_id, project))
+            cursor.execute("""
+                SELECT id FROM ai_project_permissions
+                WHERE ai_id = %s AND project = %s
+            """, (ai_id, project))
             
             existing = cursor.fetchone()
             
             if existing:
                 # Update existing permission
-                if is_sqlite():
-                    cursor.execute("""
-                        UPDATE ai_project_permissions
-                        SET role = ?, granted_by = ?
-                        WHERE ai_id = ? AND project = ?
-                    """, (role, granted_by, ai_id, project))
-                else:
-                    cursor.execute("""
-                        UPDATE ai_project_permissions
-                        SET role = %s, granted_by = %s
-                        WHERE ai_id = %s AND project = %s
-                    """, (role, granted_by, ai_id, project))
+                cursor.execute("""
+                    UPDATE ai_project_permissions
+                    SET role = %s, granted_by = %s
+                    WHERE ai_id = %s AND project = %s
+                """, (role, granted_by, ai_id, project))
                 print(f"✅ Updated permission for AI {ai_id} on project {project}: {role}")
             else:
                 # Insert new permission
-                if is_sqlite():
-                    cursor.execute("""
-                        INSERT INTO ai_project_permissions (ai_id, project, role, granted_by)
-                        VALUES (?, ?, ?, ?)
-                    """, (ai_id, project, role, granted_by))
-                else:
-                    cursor.execute("""
-                        INSERT INTO ai_project_permissions (ai_id, project, role, granted_by)
-                        VALUES (%s, %s, %s, %s)
-                    """, (ai_id, project, role, granted_by))
+                cursor.execute("""
+                    INSERT INTO ai_project_permissions (ai_id, project, role, granted_by)
+                    VALUES (%s, %s, %s, %s)
+                """, (ai_id, project, role, granted_by))
                 print(f"✅ Granted permission for AI {ai_id} on project {project}: {role}")
             
             conn.commit()
@@ -449,16 +355,10 @@ class TokenManager:
             conn = self._get_connection()
             cursor = conn.cursor()
             
-            if is_sqlite():
-                cursor.execute("""
-                    DELETE FROM ai_project_permissions
-                    WHERE ai_id = ? AND project = ?
-                """, (ai_id, project))
-            else:
-                cursor.execute("""
-                    DELETE FROM ai_project_permissions
-                    WHERE ai_id = %s AND project = %s
-                """, (ai_id, project))
+            cursor.execute("""
+                DELETE FROM ai_project_permissions
+                WHERE ai_id = %s AND project = %s
+            """, (ai_id, project))
             
             rows_affected = cursor.rowcount
             conn.commit()
@@ -500,56 +400,29 @@ class TokenManager:
             cursor = conn.cursor()
             
             if ai_id and project:
-                if is_sqlite():
-                    cursor.execute("""
-                        SELECT pp.*, p.name as ai_name
-                        FROM ai_project_permissions pp
-                        JOIN ai_profiles p ON pp.ai_id = p.id
-                        WHERE pp.ai_id = ? AND pp.project = ?
-                        ORDER BY pp.created_at DESC
-                    """, (ai_id, project))
-                else:
-                    cursor.execute("""
-                        SELECT pp.*, p.name as ai_name
-                        FROM ai_project_permissions pp
-                        JOIN ai_profiles p ON pp.ai_id = p.id
-                        WHERE pp.ai_id = %s AND pp.project = %s
-                        ORDER BY pp.created_at DESC
-                    """, (ai_id, project))
+                cursor.execute("""
+                    SELECT pp.*, p.name as ai_name
+                    FROM ai_project_permissions pp
+                    JOIN ai_profiles p ON pp.ai_id = p.id
+                    WHERE pp.ai_id = %s AND pp.project = %s
+                    ORDER BY pp.created_at DESC
+                """, (ai_id, project))
             elif ai_id:
-                if is_sqlite():
-                    cursor.execute("""
-                        SELECT pp.*, p.name as ai_name
-                        FROM ai_project_permissions pp
-                        JOIN ai_profiles p ON pp.ai_id = p.id
-                        WHERE pp.ai_id = ?
-                        ORDER BY pp.created_at DESC
-                    """, (ai_id,))
-                else:
-                    cursor.execute("""
-                        SELECT pp.*, p.name as ai_name
-                        FROM ai_project_permissions pp
-                        JOIN ai_profiles p ON pp.ai_id = p.id
-                        WHERE pp.ai_id = %s
-                        ORDER BY pp.created_at DESC
-                    """, (ai_id,))
+                cursor.execute("""
+                    SELECT pp.*, p.name as ai_name
+                    FROM ai_project_permissions pp
+                    JOIN ai_profiles p ON pp.ai_id = p.id
+                    WHERE pp.ai_id = %s
+                    ORDER BY pp.created_at DESC
+                """, (ai_id,))
             elif project:
-                if is_sqlite():
-                    cursor.execute("""
-                        SELECT pp.*, p.name as ai_name
-                        FROM ai_project_permissions pp
-                        JOIN ai_profiles p ON pp.ai_id = p.id
-                        WHERE pp.project = ?
-                        ORDER BY pp.created_at DESC
-                    """, (project,))
-                else:
-                    cursor.execute("""
-                        SELECT pp.*, p.name as ai_name
-                        FROM ai_project_permissions pp
-                        JOIN ai_profiles p ON pp.ai_id = p.id
-                        WHERE pp.project = %s
-                        ORDER BY pp.created_at DESC
-                    """, (project,))
+                cursor.execute("""
+                    SELECT pp.*, p.name as ai_name
+                    FROM ai_project_permissions pp
+                    JOIN ai_profiles p ON pp.ai_id = p.id
+                    WHERE pp.project = %s
+                    ORDER BY pp.created_at DESC
+                """, (project,))
             else:
                 cursor.execute("""
                     SELECT pp.*, p.name as ai_name
@@ -582,18 +455,11 @@ class TokenManager:
             conn = self._get_connection()
             cursor = conn.cursor()
             
-            if is_sqlite():
-                cursor.execute("""
-                    SELECT role, created_at
-                    FROM ai_project_permissions
-                    WHERE ai_id = ? AND project = ?
-                """, (ai_id, project))
-            else:
-                cursor.execute("""
-                    SELECT role, created_at
-                    FROM ai_project_permissions
-                    WHERE ai_id = %s AND project = %s
-                """, (ai_id, project))
+            cursor.execute("""
+                SELECT role, created_at
+                FROM ai_project_permissions
+                WHERE ai_id = %s AND project = %s
+            """, (ai_id, project))
             
             permission = cursor.fetchone()
             conn.close()
@@ -637,20 +503,14 @@ class TokenManager:
             cursor = conn.cursor()
             
             # Get AI name for logging
-            cursor.execute("SELECT name FROM ai_profiles WHERE id = ?", (ai_id,))
+            cursor.execute("SELECT name FROM ai_profiles WHERE id = %s", (ai_id,))
             ai_profile = cursor.fetchone()
             ai_name = ai_profile['name'] if ai_profile else 'Unknown'
             
-            if is_sqlite():
-                cursor.execute("""
-                    INSERT INTO ai_auth_audit (ai_id, ai_name, project, success, details, created_at)
-                    VALUES (?, ?, ?, ?, ?, datetime('now'))
-                """, (ai_id, ai_name, project, 1 if success else 0, details))
-            else:
-                cursor.execute("""
-                    INSERT INTO ai_auth_audit (ai_id, ai_name, project, success, details, created_at)
-                    VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
-                """, (ai_id, ai_name, project, success, details))
+            cursor.execute("""
+                INSERT INTO ai_auth_audit (ai_id, ai_name, project, success, details, created_at)
+                VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+            """, (ai_id, ai_name, project, success, details))
             
             conn.commit()
             conn.close()

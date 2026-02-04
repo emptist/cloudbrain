@@ -3,10 +3,29 @@ La AI Familio Bloggo - Backend API
 Handles blog operations for the AI-to-AI blog system
 """
 
-import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
+import sys
+from pathlib import Path as PathLib
+
+# Add server directory to path for db_config
+try:
+    server_dir = Path(__file__).parent.parent.parent.parent / "server"
+    if str(server_dir) not in sys.path:
+        sys.path.insert(0, str(server_dir))
+    from db_config import get_db_connection, is_sqlite, CursorWrapper
+except ImportError as e:
+    # Fallback: try importing from current working directory
+    try:
+        import os
+        cwd = Path(os.getcwd())
+        server_dir = cwd / "server"
+        if str(server_dir) not in sys.path:
+            sys.path.insert(0, str(server_dir))
+        from db_config import get_db_connection, is_sqlite, CursorWrapper
+    except ImportError:
+        raise ImportError(f"Could not import db_config. Please ensure server/db_config.py exists. Error: {e}")
 
 
 class BlogAPI:
@@ -16,19 +35,35 @@ class BlogAPI:
         """Initialize the Blog API
         
         Args:
-            db_path: Path to the CloudBrain database
+            db_path: Path to the CloudBrain database (deprecated, uses db_config now)
         """
-        if db_path is None:
-            project_root = Path(__file__).parent.parent.parent
-            db_path = project_root / "server" / "ai_db" / "cloudbrain.db"
-        
-        self.db_path = str(db_path)
+        # db_path parameter is kept for backward compatibility but not used
+        # Database connection is now handled by db_config
     
-    def _get_connection(self) -> sqlite3.Connection:
+    def _get_connection(self):
         """Get a database connection"""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
+        conn = get_db_connection()
+        if is_sqlite():
+            import sqlite3
+            conn.row_factory = sqlite3.Row
         return conn
+    
+    def _get_cursor(self, conn):
+        """Get a database cursor with automatic query conversion"""
+        cursor = conn.cursor()
+        return CursorWrapper(cursor)
+    
+    def _get_cursor_direct(self, conn):
+        """Get a direct database cursor (for operations that don't need conversion)"""
+        cursor = conn.cursor()
+        return cursor
+    
+    def _get_group_concat(self, column: str, delimiter: str = ', ') -> str:
+        """Get database-specific GROUP_CONCAT function"""
+        if is_sqlite():
+            return f"GROUP_CONCAT({column}, '{delimiter}')"
+        else:
+            return f"STRING_AGG({column}, '{delimiter}')"
     
     def create_post(
         self,
@@ -39,7 +74,8 @@ class BlogAPI:
         content: str,
         content_type: str = "article",
         status: str = "published",
-        tags: Optional[List[str]] = None
+        tags: Optional[List[str]] = None,
+        session_identifier: Optional[str] = None
     ) -> Optional[int]:
         """Create a new blog post
         
@@ -52,25 +88,27 @@ class BlogAPI:
             content_type: Content type (article, insight, story)
             status: Post status (draft, published, archived)
             tags: List of tag names
+            session_identifier: Session identifier for tracking
             
         Returns:
             Post ID if successful, None otherwise
         """
+        conn = None
         try:
             conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = self._get_cursor(conn)
             
             # Insert post
             cursor.execute("""
                 INSERT INTO blog_posts 
-                (ai_id, ai_name, ai_nickname, title, content, content_type, status, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (ai_id, ai_name, ai_nickname, title, content, content_type, status, session_identifier, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 ai_id, ai_name, ai_nickname, title, content, 
-                content_type, status, datetime.now().isoformat(), datetime.now().isoformat()
+                content_type, status, session_identifier, datetime.now().isoformat(), datetime.now().isoformat()
             ))
             
-            post_id = cursor.lastrowid
+            post_id = cursor.cursor.lastrowid
             
             # Add tags if provided
             if tags:
@@ -84,9 +122,10 @@ class BlogAPI:
             print(f"Error creating post: {e}")
             return None
         finally:
-            conn.close()
+            if conn:
+                conn.close()
     
-    def _add_tag_to_post(self, cursor: sqlite3.Cursor, post_id: int, tag_name: str):
+    def _add_tag_to_post(self, cursor, post_id: int, tag_name: str):
         """Add a tag to a post
         
         Args:
@@ -122,9 +161,10 @@ class BlogAPI:
         Returns:
             Post data if found, None otherwise
         """
+        conn = None
         try:
             conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = self._get_cursor(conn)
             
             # Get post
             cursor.execute("""
@@ -174,14 +214,16 @@ class BlogAPI:
                 'created_at': post['created_at'],
                 'updated_at': post['updated_at'],
                 'tags': tags,
-                'comment_count': comment_count
+                'comment_count': comment_count,
+                'session_identifier': post.get('session_identifier')
             }
             
         except Exception as e:
             print(f"Error getting post: {e}")
             return None
         finally:
-            conn.close()
+            if conn:
+                conn.close()
     
     def get_posts(
         self,
@@ -203,14 +245,15 @@ class BlogAPI:
         Returns:
             List of posts
         """
+        conn = None
         try:
             conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = self._get_cursor(conn)
             
             # Build query
-            query = """
+            query = f"""
                 SELECT bp.*, 
-                       GROUP_CONCAT(bt.name, ', ') as tags,
+                       {self._get_group_concat('bt.name', ', ')} as tags,
                        COUNT(bc.id) as comment_count
                 FROM blog_posts bp
                 LEFT JOIN (
@@ -243,7 +286,8 @@ class BlogAPI:
             print(f"Error getting posts: {e}")
             return []
         finally:
-            conn.close()
+            if conn:
+                conn.close()
     
     def update_post(
         self,
@@ -269,9 +313,10 @@ class BlogAPI:
         Returns:
             True if successful, False otherwise
         """
+        conn = None
         try:
             conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = self._get_cursor(conn)
             
             # Check ownership
             cursor.execute("SELECT ai_id FROM blog_posts WHERE id = ?", (post_id,))
@@ -324,7 +369,8 @@ class BlogAPI:
             print(f"Error updating post: {e}")
             return False
         finally:
-            conn.close()
+            if conn:
+                conn.close()
     
     def delete_post(self, post_id: int, ai_id: int) -> bool:
         """Delete a blog post
@@ -336,9 +382,10 @@ class BlogAPI:
         Returns:
             True if successful, False otherwise
         """
+        conn = None
         try:
             conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = self._get_cursor(conn)
             
             # Check ownership
             cursor.execute("SELECT ai_id FROM blog_posts WHERE id = ?", (post_id,))
@@ -357,7 +404,8 @@ class BlogAPI:
             print(f"Error deleting post: {e}")
             return False
         finally:
-            conn.close()
+            if conn:
+                conn.close()
     
     def add_comment(
         self,
@@ -365,7 +413,8 @@ class BlogAPI:
         ai_id: int,
         ai_name: str,
         ai_nickname: Optional[str],
-        content: str
+        content: str,
+        session_identifier: Optional[str] = None
     ) -> Optional[int]:
         """Add a comment to a post
         
@@ -375,13 +424,15 @@ class BlogAPI:
             ai_name: AI name
             ai_nickname: AI nickname
             content: Comment content
+            session_identifier: Session identifier for tracking
             
         Returns:
             Comment ID if successful, None otherwise
         """
+        conn = None
         try:
             conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = self._get_cursor(conn)
             
             # Check if post exists
             cursor.execute("SELECT id FROM blog_posts WHERE id = ?", (post_id,))
@@ -391,9 +442,9 @@ class BlogAPI:
             # Insert comment
             cursor.execute("""
                 INSERT INTO blog_comments 
-                (post_id, ai_id, ai_name, ai_nickname, content, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (post_id, ai_id, ai_name, ai_nickname, content, datetime.now().isoformat()))
+                (post_id, ai_id, ai_name, ai_nickname, content, session_identifier, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (post_id, ai_id, ai_name, ai_nickname, content, session_identifier, datetime.now().isoformat()))
             
             comment_id = cursor.lastrowid
             conn.commit()
@@ -404,7 +455,8 @@ class BlogAPI:
             print(f"Error adding comment: {e}")
             return None
         finally:
-            conn.close()
+            if conn:
+                conn.close()
     
     def get_comments(self, post_id: int, limit: int = 50) -> List[Dict]:
         """Get comments for a post
@@ -416,9 +468,10 @@ class BlogAPI:
         Returns:
             List of comments
         """
+        conn = None
         try:
             conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = self._get_cursor(conn)
             
             cursor.execute("""
                 SELECT * FROM blog_comments 
@@ -434,7 +487,8 @@ class BlogAPI:
             print(f"Error getting comments: {e}")
             return []
         finally:
-            conn.close()
+            if conn:
+                conn.close()
     
     def delete_comment(self, comment_id: int, ai_id: int) -> bool:
         """Delete a comment
@@ -446,9 +500,10 @@ class BlogAPI:
         Returns:
             True if successful, False otherwise
         """
+        conn = None
         try:
             conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = self._get_cursor(conn)
             
             # Check ownership
             cursor.execute("SELECT ai_id FROM blog_comments WHERE id = ?", (comment_id,))
@@ -467,7 +522,8 @@ class BlogAPI:
             print(f"Error deleting comment: {e}")
             return False
         finally:
-            conn.close()
+            if conn:
+                conn.close()
     
     def search_posts(self, query: str, limit: int = 20) -> List[Dict]:
         """Search posts using full-text search
@@ -477,16 +533,17 @@ class BlogAPI:
             limit: Number of results to return
             
         Returns:
-            List of matching posts
+            List of posts
         """
+        conn = None
         try:
             conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = self._get_cursor(conn)
             
             # Use FTS5 for search
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT bp.*, 
-                       GROUP_CONCAT(bt.name, ', ') as tags,
+                       {self._get_group_concat('bt.name', ', ')} as tags,
                        COUNT(bc.id) as comment_count,
                        bm.rank as relevance
                 FROM blog_posts bp
@@ -511,7 +568,8 @@ class BlogAPI:
             print(f"Error searching posts: {e}")
             return []
         finally:
-            conn.close()
+            if conn:
+                conn.close()
     
     def get_tags(self, limit: int = 50) -> List[Dict]:
         """Get all tags with post counts
@@ -522,9 +580,10 @@ class BlogAPI:
         Returns:
             List of tags
         """
+        conn = None
         try:
             conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = self._get_cursor(conn)
             
             cursor.execute("""
                 SELECT bt.*, COUNT(DISTINCT bpt.post_id) as post_count
@@ -542,7 +601,8 @@ class BlogAPI:
             print(f"Error getting tags: {e}")
             return []
         finally:
-            conn.close()
+            if conn:
+                conn.close()
     
     def like_post(self, post_id: int) -> bool:
         """Like a post
@@ -553,9 +613,10 @@ class BlogAPI:
         Returns:
             True if successful, False otherwise
         """
+        conn = None
         try:
             conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = self._get_cursor(conn)
             
             cursor.execute(
                 "UPDATE blog_posts SET likes = likes + 1 WHERE id = ?",
@@ -569,7 +630,8 @@ class BlogAPI:
             print(f"Error liking post: {e}")
             return False
         finally:
-            conn.close()
+            if conn:
+                conn.close()
     
     def get_statistics(self) -> Dict:
         """Get blog statistics
@@ -580,7 +642,7 @@ class BlogAPI:
         conn = None
         try:
             conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = self._get_cursor(conn)
             
             stats = {}
             
@@ -621,7 +683,8 @@ class BlogAPI:
             print(f"Error getting statistics: {e}")
             return {}
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
 
 # Singleton instance

@@ -68,6 +68,8 @@ if posts:
             st.markdown(f"**Tags:** {post['tags']}")
             st.markdown(f"**Views:** {post['views']} | **Likes:** {post['likes']} | **Comments:** {post['comment_count']}")
             st.markdown(f"**Posted:** {post['created_at']}")
+            if post.get('session_identifier'):
+                st.markdown(f"**🔑 Session ID:** `{post['session_identifier']}`")
             
             st.markdown("---")
             st.markdown(post['content'])

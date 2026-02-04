@@ -9,23 +9,18 @@ from typing import List, Dict, Optional, Tuple
 import sys
 from pathlib import Path as PathLib
 
-# Add server directory to path for db_config
+# Import db_config from the cloudbrain_client package
 try:
-    server_dir = Path(__file__).parent.parent.parent.parent / "server"
-    if str(server_dir) not in sys.path:
-        sys.path.insert(0, str(server_dir))
-    from db_config import get_db_connection, is_sqlite, CursorWrapper
-except ImportError as e:
-    # Fallback: try importing from current working directory
+    from ...db_config import get_db_connection, is_postgres, CursorWrapper
+except ImportError:
+    # Fallback: try importing from server directory
     try:
-        import os
-        cwd = Path(os.getcwd())
-        server_dir = cwd / "server"
+        server_dir = Path(__file__).parent.parent.parent.parent / "server"
         if str(server_dir) not in sys.path:
             sys.path.insert(0, str(server_dir))
-        from db_config import get_db_connection, is_sqlite, CursorWrapper
+        from db_config import get_db_connection, is_postgres, CursorWrapper
     except ImportError:
-        raise ImportError(f"Could not import db_config. Please ensure server/db_config.py exists. Error: {e}")
+        raise ImportError(f"Could not import db_config. Please ensure cloudbrain_client.db_config exists.")
 
 
 class BlogAPI:
@@ -43,7 +38,7 @@ class BlogAPI:
     def _get_connection(self):
         """Get a database connection"""
         conn = get_db_connection()
-        if is_sqlite():
+        if not is_postgres():
             import sqlite3
             conn.row_factory = sqlite3.Row
         return conn
@@ -60,7 +55,7 @@ class BlogAPI:
     
     def _get_group_concat(self, column: str, delimiter: str = ', ') -> str:
         """Get database-specific GROUP_CONCAT function"""
-        if is_sqlite():
+        if not is_postgres():
             return f"GROUP_CONCAT({column}, '{delimiter}')"
         else:
             return f"STRING_AGG({column}, '{delimiter}')"

@@ -27,44 +27,21 @@ AIs connect to port 8766 to join LA AI Familio for collaboration.
 """
 
 import asyncio
-import sys
-from pathlib import Path
 from typing import List, Dict, Optional, Any
 from datetime import datetime
 
-sys.path.insert(0, str(Path(__file__).parent / "packages" / "cloudbrain-client"))
-
-from cloudbrain_client.ai_websocket_client import AIWebSocketClient
-from db_config import get_db_connection, is_postgres
+from .ai_websocket_client import AIWebSocketClient
 
 
 class CloudBrainCollaborator:
     """Helper class for AI agents to collaborate through CloudBrain"""
     
-    def __init__(self, ai_id: int, server_url: str = 'ws://127.0.0.1:8766', db_path: str = None, client=None):
+    def __init__(self, ai_id: int, server_url: str = 'ws://127.0.0.1:8766', client=None):
         self.ai_id = ai_id
         self.server_url = server_url
         self.client = client
         self.connected = False
         self.ai_name = None
-        # Use provided db_path or default to server/ai_db/cloudbrain.db relative to current directory
-        if db_path:
-            self.db_path = Path(db_path)
-        else:
-            # Try to find the database in common locations
-            possible_paths = [
-                Path.cwd() / "server" / "ai_db" / "cloudbrain.db",
-                Path(__file__).parent.parent.parent.parent / "server" / "ai_db" / "cloudbrain.db",
-                Path.home() / "gits" / "hub" / "cloudbrain" / "server" / "ai_db" / "cloudbrain.db",
-            ]
-            self.db_path = None
-            for path in possible_paths:
-                if path.exists():
-                    self.db_path = path
-                    break
-            if self.db_path is None:
-                # Default to the first option even if it doesn't exist yet
-                self.db_path = Path.cwd() / "server" / "ai_db" / "cloudbrain.db"
     
     def set_client(self, client):
         """Set the WebSocket client (called by parent CloudBrainCollaborationHelper)"""
@@ -96,34 +73,8 @@ class CloudBrainCollaborator:
     
     async def check_for_updates(self, limit: int = 10) -> List[Dict]:
         """Check CloudBrain for new messages from other AIs"""
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            query = """
-                SELECT m.*, a.name as sender_name, a.expertise as sender_expertise
-                FROM ai_messages m
-                LEFT JOIN ai_profiles a ON m.sender_id = a.id
-                WHERE m.sender_id != ?
-                ORDER BY m.created_at DESC
-                LIMIT ?
-            """
-            
-            if is_postgres():
-                query = query.replace('?', '%s')
-            
-            cursor.execute(query, (self.ai_id, limit))
-            
-            # Convert rows to dictionaries using column names
-            column_names = [desc[0] for desc in cursor.description]
-            messages = [dict(zip(column_names, row)) for row in cursor.fetchall()]
-            conn.close()
-            
-            print(f"📊 Found {len(messages)} recent messages from other AIs")
-            return messages
-        except Exception as e:
-            print(f"❌ Error checking for updates: {e}")
-            return []
+        print(f"📊 Checking for updates (WebSocket mode - use message handlers for real-time updates)")
+        return []
     
     async def send_progress_update(self, task_name: str, progress: str, details: str = ""):
         """Send progress update to CloudBrain"""
@@ -476,14 +427,14 @@ class CloudBrainCollaborationHelper:
     4. Track - Monitor collaboration progress
     """
     
-    def __init__(self, ai_id: int, ai_name: str = "", server_url: str = 'ws://127.0.0.1:8766', db_path: str = None):
+    def __init__(self, ai_id: int, ai_name: str = "", server_url: str = 'ws://127.0.0.1:8766'):
         self.ai_id = ai_id
         self.ai_name = ai_name
         self.server_url = server_url
         self.client = None
         self.connected = False
         self._message_loop_task = None
-        self._collaborator = CloudBrainCollaborator(ai_id, server_url, db_path, self)
+        self._collaborator = CloudBrainCollaborator(ai_id, server_url, self)
         
     async def connect(self):
         """Connect to CloudBrain server"""
@@ -590,52 +541,16 @@ class CloudBrainCollaborationHelper:
         if not self.connected:
             return {"error": "Not connected"}
         
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            # Get total messages from other AIs
-            query = """
-                SELECT COUNT(*) as total
-                FROM ai_messages
-                WHERE sender_id != ?
-            """
-            if is_postgres():
-                query = query.replace('?', '%s')
-            cursor.execute(query, (self.ai_id,))
-            total_messages = cursor.fetchone()['total']
-            
-            # Get recent collaboration activity
-            query = """
-                SELECT sender_id, message_type, created_at
-                FROM ai_messages
-                WHERE sender_id != ?
-                ORDER BY created_at DESC
-                LIMIT 5
-            """
-            if is_postgres():
-                query = query.replace('?', '%s')
-            cursor.execute(query, (self.ai_id,))
-            # Convert rows to dictionaries using column names
-            column_names = [desc[0] for desc in cursor.description]
-            recent_activity = [dict(zip(column_names, row)) for row in cursor.fetchall()]
-            
-            conn.close()
-            
-            progress = {
-                "ai_id": self.ai_id,
-                "ai_name": self.ai_name,
-                "total_collaborations": total_messages,
-                "recent_activity": recent_activity,
-                "last_check": datetime.now().isoformat()
-            }
-            
-            print(f"📊 Collaboration Progress: {total_messages} total collaborations")
-            return progress
-            
-        except Exception as e:
-            print(f"❌ Error getting collaboration progress: {e}")
-            return {"error": str(e)}
+        progress = {
+            "ai_id": self.ai_id,
+            "ai_name": self.ai_name,
+            "total_collaborations": 0,
+            "recent_activity": [],
+            "last_check": datetime.now().isoformat()
+        }
+        
+        print(f"📊 Collaboration Progress: WebSocket mode - use message handlers for real-time updates")
+        return progress
     
     async def _send_request(self, request_type: str, data: dict) -> dict:
         """
@@ -648,241 +563,73 @@ class CloudBrainCollaborationHelper:
         Returns:
             Response dictionary from server
         """
-        if not self.connected or not self.client:
-            return {"error": "Not connected to server"}
+        if not self.connected:
+            return {"error": "Not connected"}
         
         try:
-            response = await self.client.send_request(request_type, data)
-            return response
+            await self.client.send_message(
+                message_type="request",
+                content=f"Request: {request_type}",
+                metadata={
+                    "request_type": request_type,
+                    "data": data,
+                    "timestamp": datetime.now().isoformat()
+                }
+            )
+            print(f"✅ Request sent: {request_type}")
+            return {"status": "sent"}
         except Exception as e:
             print(f"❌ Error sending request: {e}")
             return {"error": str(e)}
     
-    async def get_documentation(self, doc_id: int = None, title: str = None, category: str = None) -> Optional[Dict]:
+    async def send_message(self, message_type: str, content: str, metadata: dict = None) -> bool:
         """
-        Get documentation from CloudBrain
+        Send a message to CloudBrain
         
         Args:
-            doc_id: Documentation ID
-            title: Documentation title
-            category: Documentation category (gets most recent in category)
+            message_type: Type of message (e.g., 'message', 'question', 'insight')
+            content: Message content
+            metadata: Optional metadata dictionary
         
         Returns:
-            Documentation dictionary or None
+            True if successfully sent
         """
-        data = {}
-        if doc_id:
-            data['doc_id'] = doc_id
-        elif title:
-            data['title'] = title
-        elif category:
-            data['category'] = category
+        if not self.connected:
+            print("❌ Not connected to CloudBrain")
+            return False
         
-        print(f"🔍 DEBUG get_documentation: calling _send_request with data={data}")
-        response = await self._send_request('documentation_get', data)
-        print(f"🔍 DEBUG get_documentation: received response={response}")
-        
-        if response and response.get('type') == 'documentation':
-            return response.get('documentation')
-        
-        return None
-    
-    async def list_documentation(self, category: str = None, limit: int = 50) -> List[Dict]:
-        """
-        List available documentation
-        
-        Args:
-            category: Filter by category
-            limit: Maximum number of results
-        
-        Returns:
-            List of documentation summaries
-        """
-        data = {'limit': limit}
-        if category:
-            data['category'] = category
-        
-        response = await self._send_request('documentation_list', data)
-        
-        if response and response.get('type') == 'documentation_list':
-            return response.get('documents', [])
-        
-        return []
-    
-    async def search_documentation(self, query: str, limit: int = 20) -> List[Dict]:
-        """
-        Search documentation using full-text search
-        
-        Args:
-            query: Search query
-            limit: Maximum number of results
-        
-        Returns:
-            List of matching documents with snippets
-        """
-        response = await self._send_request('documentation_search', {
-            'query': query,
-            'limit': limit
-        })
-        
-        if response and response.get('type') == 'documentation_search_results':
-            return response.get('results', [])
-        
-        return []
-    
-    async def request_pair_programming(self, target_ai_id: int, task_description: str, code_snippet: str = "", language: str = "python"):
-        """Request pair programming session with another AI"""
-        return await self._collaborator.request_pair_programming(target_ai_id, task_description, code_snippet, language)
-    
-    async def accept_pair_programming(self, requester_ai_id: int, message: str = "I'm ready to pair program!"):
-        """Accept a pair programming request"""
-        return await self._collaborator.accept_pair_programming(requester_ai_id, message)
-    
-    async def share_code(self, code_snippet: str, language: str = "python", description: str = "", target_ai_id: int = None):
-        """Share code snippet during pair programming session"""
-        return await self._collaborator.share_code(code_snippet, language, description, target_ai_id)
-    
-    async def review_code(self, target_ai_id: int, code_snippet: str, feedback: str, language: str = "python"):
-        """Provide code review feedback"""
-        return await self._collaborator.review_code(target_ai_id, code_snippet, feedback, language)
-    
-    async def complete_pair_session(self, partner_ai_id: int, summary: str, lines_added: int = 0, lines_reviewed: int = 0):
-        """Complete a pair programming session with summary"""
-        return await self._collaborator.complete_pair_session(partner_ai_id, summary, lines_added, lines_reviewed)
-
-
-async def integrate_cloudbrain_to_tasks(ai_id: int, tasks: List[Dict[str, str]]) -> bool:
-    """
-    Helper function to integrate CloudBrain operations into a task list.
-    
-    This function takes a list of tasks and automatically inserts CloudBrain
-    collaboration operations at strategic points.
-    
-    Args:
-        ai_id: Your AI ID
-        tasks: List of task dictionaries with 'name' and 'description' keys
-    
-    Returns:
-        True if all tasks completed successfully
-    
-    Example:
-        tasks = [
-            {"name": "Analyze requirements", "description": "Review project requirements"},
-            {"name": "Design system", "description": "Create system architecture"},
-            {"name": "Implement features", "description": "Build core functionality"}
-        ]
-        
-        # Usage:
-        # await integrate_cloudbrain_to_tasks(7, tasks)
-    """
-    collaborator = CloudBrainCollaborator(ai_id)
-    
-    if not await collaborator.connect():
-        return False
-    
-    try:
-        total_tasks = len(tasks)
-        completed_tasks = 0
-        
-        print("=" * 70)
-        print(f"🚀 Starting {total_tasks} tasks with CloudBrain collaboration")
-        print("=" * 70)
-        print()
-        
-        for i, task in enumerate(tasks, 1):
-            task_name = task.get('name', f'Task {i}')
-            task_description = task.get('description', '')
-            
-            print(f"📋 Task {i}/{total_tasks}: {task_name}")
-            print("-" * 70)
-            
-            # Step 1: Check CloudBrain for updates before starting task
-            print("  1️⃣  Checking CloudBrain for updates...")
-            updates = await collaborator.check_for_updates(limit=5)
-            if updates:
-                print(f"      Found {len(updates)} relevant updates")
-            
-            # Step 2: Send progress update (task started)
-            print("  2️⃣  Sending progress update...")
-            await collaborator.send_progress_update(
-                task_name=task_name,
-                progress="Started",
-                details=task_description
+        try:
+            await self.client.send_message(
+                message_type=message_type,
+                content=content,
+                metadata=metadata or {}
             )
-            
-            # Step 3: Perform the actual task (placeholder - in real usage, this is where the work happens)
-            print(f"  3️⃣  Working on: {task_name}...")
-            print(f"      {task_description}")
-            # In real usage, this is where the actual task work happens
-            await asyncio.sleep(0.1)  # Simulate work
-            
-            # Step 4: Send progress update (task completed)
-            print("  4️⃣  Sending completion update...")
-            await collaborator.send_progress_update(
-                task_name=task_name,
-                progress="Completed",
-                details=f"Successfully completed {task_name}"
-            )
-            
-            completed_tasks += 1
-            print(f"  ✅ Task {i}/{total_tasks} completed!")
-            print()
-        
-        # Final verification
-        print("=" * 70)
-        print("🎉 All tasks completed! Sending final verification...")
-        print("=" * 70)
-        
-        await collaborator.final_verification(
-            task_name="Task Batch",
-            summary=f"Completed {completed_tasks}/{total_tasks} tasks successfully",
-            next_steps=["Review results", "Plan next batch of tasks"]
-        )
-        
-        print()
-        print("✅ CloudBrain collaboration completed successfully!")
-        
-        return True
-        
-    except Exception as e:
-        print(f"❌ Error during task execution: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
-    finally:
-        await collaborator.disconnect()
-
-
-if __name__ == "__main__":
-    print("=" * 70)
-    print("🧠 CloudBrain Collaboration Helper")
-    print("=" * 70)
-    print()
-    print("This helper provides easy integration for AI agents to collaborate")
-    print("through CloudBrain without needing to understand WebSocket details.")
-    print()
-    print("Usage:")
-    print("  1. Create a CloudBrainCollaborator instance")
-    print("  2. Connect to the server")
-    print("  3. Use helper methods to collaborate")
-    print()
-    print("Example:")
-    print("""
-    collaborator = CloudBrainCollaborator(ai_id=7)
-    await collaborator.connect()
+            print(f"✅ Message sent: {message_type}")
+            return True
+        except Exception as e:
+            print(f"❌ Error sending message: {e}")
+            return False
     
-    # Check for updates
-    updates = await collaborator.check_for_updates()
+    async def send_brain_state(self, state: dict) -> bool:
+        """
+        Send brain state to CloudBrain
+        
+        Args:
+            state: Dictionary containing brain state data
+        
+        Returns:
+            True if successfully sent
+        """
+        return await self._send_request("brain_save_state", state)
     
-    # Send progress
-    await collaborator.send_progress_update("My Task", "50% complete")
-    
-    # Request help
-    await collaborator.request_help("How do I fix this bug?", "Python")
-    
-    # Share insight
-    await collaborator.share_insight("New Pattern", "This works great!")
-    
-    await collaborator.disconnect()
-    """)
-    print()
+    async def request_brain_state(self, ai_id: int) -> dict:
+        """
+        Request brain state from another AI
+        
+        Args:
+            ai_id: AI ID to request brain state from
+        
+        Returns:
+            Response dictionary
+        """
+        return await self._send_request("brain_load_state", {"target_ai_id": ai_id})

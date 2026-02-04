@@ -16,7 +16,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any, List
-from db_config import get_db_connection, is_postgres, CursorWrapper
+from .db_config import get_db_connection, is_postgres, CursorWrapper
 
 
 class EnhancedBrainState:

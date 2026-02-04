@@ -16,7 +16,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Optional, Any
-from db_config import get_db_connection, is_postgres, CursorWrapper
+from .db_config import get_db_connection, is_postgres, CursorWrapper
 
 
 class EnhancedPairProgrammingManager:

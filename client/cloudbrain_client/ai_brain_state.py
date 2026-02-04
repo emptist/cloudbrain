@@ -33,7 +33,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any
-from db_config import get_db_connection, is_postgres, is_sqlite
+from .db_config import get_db_connection, is_postgres
 
 
 class BrainState:
@@ -81,7 +81,7 @@ class BrainState:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        if is_sqlite():
+        if not is_postgres():
             sessions_table_sql = """
                 CREATE TABLE IF NOT EXISTS ai_brain_sessions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -186,7 +186,7 @@ class BrainState:
             if is_postgres():
                 query = query.replace('?', '%s')
             
-            from db_config import CursorWrapper
+            from .db_config import CursorWrapper
             wrapped_cursor = CursorWrapper(cursor, ['current_cycle', 'cycle_count'])
             wrapped_cursor.execute(query, (self.ai_id,))
             result = wrapped_cursor.fetchone()
@@ -204,7 +204,7 @@ class BrainState:
             }
             
             # Update current state
-            if is_sqlite():
+            if not is_postgres():
                 insert_sql = """
                     INSERT OR REPLACE INTO ai_current_state 
                     (ai_id, current_task, last_thought, last_insight, current_cycle, cycle_count, last_activity, brain_dump, checkpoint_data)
@@ -283,7 +283,7 @@ class BrainState:
             if is_postgres():
                 query = query.replace('?', '%s')
             
-            from db_config import CursorWrapper
+            from .db_config import CursorWrapper
             wrapped_cursor = CursorWrapper(cursor, ['current_task', 'last_thought', 'last_insight', 'current_cycle', 'cycle_count', 'checkpoint_data'])
             wrapped_cursor.execute(query, (self.ai_id,))
             
@@ -338,7 +338,7 @@ class BrainState:
             if is_postgres():
                 query = query.replace('?', '%s')
             
-            from db_config import CursorWrapper
+            from .db_config import CursorWrapper
             wrapped_cursor = CursorWrapper(cursor, ['start_time', 'session_type', 'stats'])
             wrapped_cursor.execute(query, (self.ai_id, limit))
             

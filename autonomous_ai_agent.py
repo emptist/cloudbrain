@@ -138,29 +138,32 @@ os.environ['DB_TYPE'] = 'postgres'
 # Get the absolute path to the cloudbrain directory (resolves symlinks)
 cloudbrain_dir = Path(__file__).resolve().parent
 
-# Add client to path for brain state import
-sys.path.insert(0, str(cloudbrain_dir / "client"))
-
-# Add client/modules to path for module imports
-sys.path.insert(0, str(cloudbrain_dir / "client" / "modules"))
-
-# Add packages/cloudbrain-client to path for main client imports
-sys.path.insert(0, str(cloudbrain_dir / "packages" / "cloudbrain-client"))
-
+# Try to import from installed package first
 try:
-    from cloudbrain_client import CloudBrainCollaborationHelper
+    from cloudbrain_client import CloudBrainCollaborationHelper, BrainState
+    from cloudbrain_client.modules.ai_blog.websocket_blog_client import create_websocket_blog_client
+    from cloudbrain_client.modules.ai_familio.websocket_familio_client import create_websocket_familio_client
+    print("✅ Using installed cloudbrain-client package")
 except ImportError:
-    print("❌ CloudBrain client not found!")
-    print("Please install: pip install cloudbrain-client==2.0.0")
-    print("Or run: pip install -r requirements.txt")
-    sys.exit(1)
-
-try:
-    from ai_brain_state import BrainState
-except ImportError:
-    print("❌ Brain state module not found!")
-    print("Please ensure ai_brain_state.py is in client/")
-    sys.exit(1)
+    # Fallback to local client directory for development
+    print("⚠️  cloudbrain-client package not found, using local client directory")
+    
+    # Add client to path for brain state import
+    sys.path.insert(0, str(cloudbrain_dir / "client"))
+    
+    # Add client/modules to path for module imports
+    sys.path.insert(0, str(cloudbrain_dir / "client" / "modules"))
+    
+    try:
+        from cloudbrain_client import CloudBrainCollaborationHelper, BrainState
+        from ai_blog.websocket_blog_client import create_websocket_blog_client
+        from ai_familio.websocket_familio_client import create_websocket_familio_client
+    except ImportError as e:
+        print(f"❌ CloudBrain client not found!")
+        print(f"Error: {e}")
+        print("Please install: pip install cloudbrain-client==3.0.0")
+        print("Or run: pip install -r client/requirements.txt")
+        sys.exit(1)
 
 
 def check_server_running(server_url: str = "ws://127.0.0.1:8766") -> bool:
@@ -403,8 +406,9 @@ class AutonomousAIAgent:
     def _init_modules(self):
         """Initialize client modules (blog and familio)"""
         try:
-            from ai_blog.websocket_blog_client import create_websocket_blog_client
-            from ai_familio.websocket_familio_client import create_websocket_familio_client
+            # Imports are already done at module level
+            # from cloudbrain_client.modules.ai_blog.websocket_blog_client import create_websocket_blog_client
+            # from cloudbrain_client.modules.ai_familio.websocket_familio_client import create_websocket_familio_client
             
             # Share the WebSocket connection with blog and familio clients
             shared_websocket = self.helper.client.ws if self.helper.client else None
@@ -502,26 +506,27 @@ class AutonomousAIAgent:
             print("   Neniu anta stato trovita (nova sesanco)")
             
             # Read AI Guide for first-time users
-            print("\n📚 Legas CloudBrain AI Gvidilon...")
-            ai_guide = await self.helper.get_documentation(title='CloudBrain AI Guide - Complete Reference')
-            
-            if ai_guide:
-                print(f"✅ Trovis gvidilon (versio {ai_guide.get('version', '1.0')})")
-                print(f"   Titolo: {ai_guide.get('title')}")
-                print(f"   Kategorio: {ai_guide.get('category')}")
-                print(f"   Laste gxisdatigita: {ai_guide.get('updated_at')}")
-                print()
-                print("=" * 70)
-                print("📜 CLOUDBRAIN AI GVIDILO")
-                print("=" * 70)
-                print(ai_guide.get('content', '')[:2000])
-                print("...")
-                print("=" * 70)
-                print()
-                print("💡 Por plena gvidilo, uzu: await helper.get_documentation(title='CloudBrain AI Guide - Complete Reference')")
-                print()
-            else:
-                print("⚠️  Ne trovis gvidilon")
+            # Note: get_documentation is not available in the package version
+            # print("\n📚 Legas CloudBrain AI Gvidilon...")
+            # ai_guide = await self.helper.get_documentation(title='CloudBrain AI Guide - Complete Reference')
+            # 
+            # if ai_guide:
+            #     print(f"✅ Trovis gvidilon (versio {ai_guide.get('version', '1.0')})")
+            #     print(f"   Titolo: {ai_guide.get('title')}")
+            #     print(f"   Kategorio: {ai_guide.get('category')}")
+            #     print(f"   Laste gxisdatigita: {ai_guide.get('updated_at')}")
+            #     print()
+            #     print("=" * 70)
+            #     print("📜 CLOUDBRAIN AI GVIDILO")
+            #     print("=" * 70)
+            #     print(ai_guide.get('content', '')[:2000])
+            #     print("...")
+            #     print("=" * 70)
+            #     print()
+            #     print("💡 Por plena gvidilo, uzu: await helper.get_documentation(title='CloudBrain AI Guide - Complete Reference')")
+            #     print()
+            # else:
+            #     print("⚠️  Ne trovis gvidilon")
         
         # Brain state is already initialized and loaded above
         # No need for separate session creation with BrainState

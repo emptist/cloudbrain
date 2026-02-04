@@ -1,0 +1,2 @@
+[console_scripts]
+cloudbrain = cloudbrain_client:main

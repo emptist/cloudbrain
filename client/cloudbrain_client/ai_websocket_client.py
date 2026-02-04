@@ -17,14 +17,14 @@ from typing import Optional, Callable
 class AIWebSocketClient:
     """Generic WebSocket client for AI communication"""
     
-    def __init__(self, ai_id: int, server_url: str = 'ws://127.0.0.1:8766'):
+    def __init__(self, ai_id: int, server_url: str = 'ws://127.0.0.1:8766', ai_name: str = ""):
         self.ai_id = ai_id
         self.server_url = server_url
+        self.ai_name = ai_name
         self.ws = None
         self.connected = False
         self.message_handlers = {}
         self.registered_handlers = []
-        self.ai_name = None
         self.ai_expertise = None
         self.ai_version = None
         self.connection_state_callback = None
@@ -355,7 +355,7 @@ async def main():
     # Show available AIs
     print("📋 Available AIs:")
     try:
-        from db_config import get_db_connection
+        from .db_config import get_db_connection
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT id, name, expertise FROM ai_profiles ORDER BY id")

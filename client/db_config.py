@@ -1,5 +1,5 @@
 """
-Database Configuration for CloudBrain
+Database Configuration for CloudBrain Client
 Supports both SQLite and PostgreSQL
 """
 
@@ -10,7 +10,7 @@ from typing import Optional, List, Any, Tuple
 DB_TYPE = os.getenv('DB_TYPE', 'postgres')
 
 # SQLite Configuration
-SQLITE_DB_PATH = os.getenv('SQLITE_DB_PATH', 'ai_db/cloudbrain.db')
+SQLITE_DB_PATH = os.getenv('SQLITE_DB_PATH', 'server/ai_db/cloudbrain.db')
 
 # PostgreSQL Configuration
 POSTGRES_HOST = os.getenv('POSTGRES_HOST', 'localhost')
@@ -18,6 +18,7 @@ POSTGRES_PORT = os.getenv('POSTGRES_PORT', '5432')
 POSTGRES_DB = os.getenv('POSTGRES_DB', 'cloudbrain')
 POSTGRES_USER = os.getenv('POSTGRES_USER', 'jk')
 POSTGRES_PASSWORD = os.getenv('POSTGRES_PASSWORD', '')
+
 
 def get_db_connection():
     """
@@ -43,6 +44,7 @@ def get_db_connection():
         conn.row_factory = sqlite3.Row
         return conn
 
+
 def get_db_path() -> str:
     """
     Get database path or connection string
@@ -55,13 +57,16 @@ def get_db_path() -> str:
     else:
         return SQLITE_DB_PATH
 
+
 def is_postgres() -> bool:
     """Check if using PostgreSQL"""
     return DB_TYPE == 'postgres'
 
+
 def is_sqlite() -> bool:
     """Check if using SQLite"""
     return DB_TYPE == 'sqlite'
+
 
 class CursorWrapper:
     """Wrapper for database cursor to handle both SQLite and PostgreSQL"""

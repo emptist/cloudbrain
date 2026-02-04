@@ -7,7 +7,6 @@ This script starts the CloudBrain WebSocket server with on-screen instructions
 import asyncio
 import websockets
 import json
-import sqlite3
 import sys
 import os
 import socket
@@ -18,6 +17,10 @@ from typing import Dict, List
 from pathlib import Path
 from token_manager import TokenManager
 from db_config import get_db_connection, is_postgres, is_sqlite, get_db_path, CursorWrapper
+from logging_config import setup_logging, get_logger
+from env_config import CloudBrainConfig
+
+logger = get_logger("cloudbrain.server")
 
 
 def get_timestamp_function():
@@ -110,8 +113,6 @@ def print_banner():
     
     try:
         conn = get_db_connection()
-        if is_sqlite():
-            conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         wrapped_cursor = CursorWrapper(cursor, ['id', 'name', 'nickname', 'expertise', 'version'])
         wrapped_cursor.execute("SELECT id, name, nickname, expertise, version FROM ai_profiles ORDER BY id")
@@ -362,7 +363,6 @@ class CloudBrainServer:
             
             conn = get_db_connection()
             if is_sqlite():
-                conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("SELECT id, name, nickname, expertise, version, project FROM ai_profiles WHERE id = ?", (ai_id,))
             ai_profile = cursor.fetchone()
@@ -629,7 +629,6 @@ class CloudBrainServer:
         
         conn = get_db_connection()
         if is_sqlite():
-            conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         cursor.execute("SELECT name, nickname, expertise FROM ai_profiles WHERE id = ?", (sender_id,))
@@ -702,7 +701,6 @@ class CloudBrainServer:
         users = []
         for ai_id in self.clients.keys():
             conn = get_db_connection()
-            conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             
             cursor.execute("SELECT name, nickname, expertise, version, project FROM ai_profiles WHERE id = ?", (ai_id,))
@@ -750,7 +748,6 @@ class CloudBrainServer:
         tags = data.get('tags', [])
         
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         cursor.execute("SELECT name, nickname, expertise, project FROM ai_profiles WHERE id = ?", (sender_id,))
@@ -800,7 +797,6 @@ class CloudBrainServer:
         offset = data.get('offset', 0)
         
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -851,7 +847,6 @@ class CloudBrainServer:
             return
         
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -906,7 +901,6 @@ class CloudBrainServer:
             return
         
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         cursor.execute("SELECT name, nickname FROM ai_profiles WHERE id = ?", (sender_id,))
@@ -1014,7 +1008,6 @@ class CloudBrainServer:
         category = data.get('category', 'Technology')
         
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         cursor.execute("SELECT name, nickname FROM ai_profiles WHERE id = ?", (sender_id,))
@@ -1056,7 +1049,6 @@ class CloudBrainServer:
         offset = data.get('offset', 0)
         
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -1100,7 +1092,6 @@ class CloudBrainServer:
         brain_dump = data.get('brain_dump', {})
         
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         cursor.execute("SELECT name FROM ai_profiles WHERE id = ?", (sender_id,))
@@ -1159,7 +1150,6 @@ class CloudBrainServer:
     async def handle_brain_load_state(self, sender_id: int, data: dict):
         """Handle brain_load_state request"""
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -1202,7 +1192,6 @@ class CloudBrainServer:
         session_type = data.get('session_type', 'autonomous')
         
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         cursor.execute("SELECT name FROM ai_profiles WHERE id = ?", (sender_id,))
@@ -1251,7 +1240,6 @@ class CloudBrainServer:
         stats = data.get('stats', {})
         
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -1283,7 +1271,6 @@ class CloudBrainServer:
         task_type = data.get('task_type', 'collaboration')
         
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -1349,7 +1336,6 @@ class CloudBrainServer:
         status = data.get('status')
         
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         if status:
@@ -1404,7 +1390,6 @@ class CloudBrainServer:
         tags = data.get('tags', [])
         
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -1431,7 +1416,6 @@ class CloudBrainServer:
         offset = data.get('offset', 0)
         
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -1503,7 +1487,6 @@ class CloudBrainServer:
         limit = data.get('limit', 50)
         
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         if project:
@@ -1545,7 +1528,6 @@ class CloudBrainServer:
             return
         
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         cursor.execute("SELECT * FROM ai_conversations WHERE id = ?", (conversation_id,))
@@ -1590,7 +1572,6 @@ class CloudBrainServer:
             return
         
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         cursor.execute("SELECT name, nickname FROM ai_profiles WHERE id = ?", (sender_id,))
@@ -1746,7 +1727,6 @@ class CloudBrainServer:
             return
         
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         if file_path:
@@ -1795,7 +1775,6 @@ class CloudBrainServer:
             return
         
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         cursor.execute("SELECT * FROM ai_code_collaboration WHERE id = ?", (code_id,))
@@ -1880,7 +1859,6 @@ class CloudBrainServer:
             return
         
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         cursor.execute("SELECT * FROM ai_code_collaboration WHERE id = ?", (code_id,))
@@ -1980,7 +1958,6 @@ class CloudBrainServer:
             return
         
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         if memory_type and visibility:
@@ -2044,7 +2021,6 @@ class CloudBrainServer:
             return
         
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -2156,7 +2132,6 @@ class CloudBrainServer:
     async def handle_who_am_i(self, sender_id: int, data: dict):
         """Handle who_am_i request - help AI identify themselves"""
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         # Get AI profile
@@ -2194,7 +2169,6 @@ class CloudBrainServer:
         
         for ai_id, websocket in self.clients.items():
             conn = get_db_connection()
-            conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             
             # Get AI profile
@@ -2367,7 +2341,6 @@ class CloudBrainServer:
         print(f"   category: {category}")
         
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         if doc_id:
@@ -2419,7 +2392,6 @@ class CloudBrainServer:
         limit = data.get('limit', 50)
         
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         if category:
@@ -2471,7 +2443,6 @@ class CloudBrainServer:
         limit = data.get('limit', 20)
         
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -2532,7 +2503,16 @@ async def main():
     
     args = parser.parse_args()
     
+    # Use environment configuration if not overridden by command line
+    if args.host == '127.0.0.1':
+        args.host = CloudBrainConfig.SERVER_HOST
+    if args.port == 8766:
+        args.port = CloudBrainConfig.SERVER_PORT
+    
     print_banner()
+    
+    # Print configuration
+    CloudBrainConfig.print_config()
     
     # Acquire server lock (only one instance per machine)
     if not acquire_server_lock():

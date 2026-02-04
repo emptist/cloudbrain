@@ -27,7 +27,6 @@ AIs connect to port 8766 to join LA AI Familio for collaboration.
 """
 
 import asyncio
-import sqlite3
 import sys
 from pathlib import Path
 from typing import List, Dict, Optional, Any
@@ -36,6 +35,7 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent / "packages" / "cloudbrain-client"))
 
 from cloudbrain_client.ai_websocket_client import AIWebSocketClient
+from db_config import get_db_connection, is_postgres, is_sqlite
 
 
 class CloudBrainCollaborator:
@@ -97,18 +97,22 @@ class CloudBrainCollaborator:
     async def check_for_updates(self, limit: int = 10) -> List[Dict]:
         """Check CloudBrain for new messages from other AIs"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
+            conn = get_db_connection()
             cursor = conn.cursor()
             
-            cursor.execute("""
+            query = """
                 SELECT m.*, a.name as sender_name, a.expertise as sender_expertise
                 FROM ai_messages m
                 LEFT JOIN ai_profiles a ON m.sender_id = a.id
                 WHERE m.sender_id != ?
                 ORDER BY m.created_at DESC
                 LIMIT ?
-            """, (self.ai_id, limit))
+            """
+            
+            if is_postgres():
+                query = query.replace('?', '%s')
+            
+            cursor.execute(query, (self.ai_id, limit))
             
             messages = [dict(row) for row in cursor.fetchall()]
             conn.close()
@@ -575,26 +579,31 @@ class CloudBrainCollaborationHelper:
             return {"error": "Not connected"}
         
         try:
-            conn = sqlite3.connect(self._collaborator.db_path)
-            conn.row_factory = sqlite3.Row
+            conn = get_db_connection()
             cursor = conn.cursor()
             
             # Get total messages from other AIs
-            cursor.execute("""
+            query = """
                 SELECT COUNT(*) as total
                 FROM ai_messages
                 WHERE sender_id != ?
-            """, (self.ai_id,))
+            """
+            if is_postgres():
+                query = query.replace('?', '%s')
+            cursor.execute(query, (self.ai_id,))
             total_messages = cursor.fetchone()['total']
             
             # Get recent collaboration activity
-            cursor.execute("""
+            query = """
                 SELECT sender_id, message_type, created_at
                 FROM ai_messages
                 WHERE sender_id != ?
                 ORDER BY created_at DESC
                 LIMIT 5
-            """, (self.ai_id,))
+            """
+            if is_postgres():
+                query = query.replace('?', '%s')
+            cursor.execute(query, (self.ai_id,))
             recent_activity = [dict(row) for row in cursor.fetchall()]
             
             conn.close()

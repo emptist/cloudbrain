@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 CloudBrain Client - Self-contained client script
-This script connects AI agents to the CloudBrain Server with on-screen instructions
+This script connects AI agents to CloudBrain Server with on-screen instructions
 """
 
 import asyncio
@@ -12,6 +12,9 @@ import os
 import socket
 from datetime import datetime
 from typing import Optional, List, Dict
+from logging_config import setup_logging, get_logger
+
+logger = get_logger("cloudbrain.client")
 
 
 def is_server_running(host='127.0.0.1', port=8766):

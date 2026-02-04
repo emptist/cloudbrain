@@ -29,11 +29,11 @@ Example:
     print(f"Welcome back! You were: {state['task']}")
 """
 
-import sqlite3
 import json
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any
+from db_config import get_db_connection, is_postgres, is_sqlite
 
 
 class BrainState:
@@ -78,38 +78,70 @@ class BrainState:
     
     def _ensure_tables_exist(self):
         """Ensure brain state tables exist in database"""
-        conn = sqlite3.connect(self.db_path)
+        conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS ai_brain_sessions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ai_id INTEGER NOT NULL,
-                session_type TEXT DEFAULT 'autonomous',
-                start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                end_time TIMESTAMP,
-                stats TEXT,
-                brain_dump TEXT,
-                FOREIGN KEY (ai_id) REFERENCES ai_profiles(id)
-            )
-        """)
+        if is_sqlite():
+            sessions_table_sql = """
+                CREATE TABLE IF NOT EXISTS ai_brain_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ai_id INTEGER NOT NULL,
+                    session_type TEXT DEFAULT 'autonomous',
+                    start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    end_time TIMESTAMP,
+                    stats TEXT,
+                    brain_dump TEXT,
+                    FOREIGN KEY (ai_id) REFERENCES ai_profiles(id)
+                )
+            """
+            current_state_table_sql = """
+                CREATE TABLE IF NOT EXISTS ai_current_state (
+                    ai_id INTEGER PRIMARY KEY,
+                    current_task TEXT,
+                    last_thought TEXT,
+                    last_insight TEXT,
+                    current_cycle INTEGER,
+                    cycle_count INTEGER,
+                    last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    session_id INTEGER,
+                    brain_dump TEXT,
+                    checkpoint_data TEXT,
+                    FOREIGN KEY (ai_id) REFERENCES ai_profiles(id),
+                    FOREIGN KEY (session_id) REFERENCES ai_brain_sessions(id)
+                )
+            """
+        else:
+            sessions_table_sql = """
+                CREATE TABLE IF NOT EXISTS ai_brain_sessions (
+                    id SERIAL PRIMARY KEY,
+                    ai_id INTEGER NOT NULL,
+                    session_type TEXT DEFAULT 'autonomous',
+                    start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    end_time TIMESTAMP,
+                    stats TEXT,
+                    brain_dump TEXT,
+                    FOREIGN KEY (ai_id) REFERENCES ai_profiles(id)
+                )
+            """
+            current_state_table_sql = """
+                CREATE TABLE IF NOT EXISTS ai_current_state (
+                    ai_id INTEGER PRIMARY KEY,
+                    current_task TEXT,
+                    last_thought TEXT,
+                    last_insight TEXT,
+                    current_cycle INTEGER,
+                    cycle_count INTEGER,
+                    last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    session_id INTEGER,
+                    brain_dump TEXT,
+                    checkpoint_data TEXT,
+                    FOREIGN KEY (ai_id) REFERENCES ai_profiles(id),
+                    FOREIGN KEY (session_id) REFERENCES ai_brain_sessions(id)
+                )
+            """
         
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS ai_current_state (
-                ai_id INTEGER PRIMARY KEY,
-                current_task TEXT,
-                last_thought TEXT,
-                last_insight TEXT,
-                current_cycle INTEGER,
-                cycle_count INTEGER,
-                last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                session_id INTEGER,
-                brain_dump TEXT,
-                checkpoint_data TEXT,
-                FOREIGN KEY (ai_id) REFERENCES ai_profiles(id),
-                FOREIGN KEY (session_id) REFERENCES ai_brain_sessions(id)
-            )
-        """)
+        cursor.execute(sessions_table_sql)
+        cursor.execute(current_state_table_sql)
         
         conn.commit()
         conn.close()
@@ -144,15 +176,20 @@ class BrainState:
             )
         """
         try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
+            conn = get_db_connection()
             cursor = conn.cursor()
             
             # Get current cycle count
-            cursor.execute("""
+            query = """
                 SELECT current_cycle, cycle_count FROM ai_current_state WHERE ai_id = ?
-            """, (self.ai_id,))
-            result = cursor.fetchone()
+            """
+            if is_postgres():
+                query = query.replace('?', '%s')
+            
+            from db_config import CursorWrapper
+            wrapped_cursor = CursorWrapper(cursor, ['current_cycle', 'cycle_count'])
+            wrapped_cursor.execute(query, (self.ai_id,))
+            result = wrapped_cursor.fetchone()
             cycle_count = result['cycle_count'] if result else 0
             current_cycle = result['current_cycle'] if result else 0
             
@@ -167,11 +204,32 @@ class BrainState:
             }
             
             # Update current state
-            cursor.execute("""
-                INSERT OR REPLACE INTO ai_current_state 
-                (ai_id, current_task, last_thought, last_insight, current_cycle, cycle_count, last_activity, brain_dump, checkpoint_data)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
+            if is_sqlite():
+                insert_sql = """
+                    INSERT OR REPLACE INTO ai_current_state 
+                    (ai_id, current_task, last_thought, last_insight, current_cycle, cycle_count, last_activity, brain_dump, checkpoint_data)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """
+            else:
+                insert_sql = """
+                    INSERT INTO ai_current_state 
+                    (ai_id, current_task, last_thought, last_insight, current_cycle, cycle_count, last_activity, brain_dump, checkpoint_data)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (ai_id) DO UPDATE SET
+                        current_task = EXCLUDED.current_task,
+                        last_thought = EXCLUDED.last_thought,
+                        last_insight = EXCLUDED.last_insight,
+                        current_cycle = EXCLUDED.current_cycle,
+                        cycle_count = EXCLUDED.cycle_count,
+                        last_activity = EXCLUDED.last_activity,
+                        brain_dump = EXCLUDED.brain_dump,
+                        checkpoint_data = EXCLUDED.checkpoint_data
+                """
+            
+            if is_postgres():
+                insert_sql = insert_sql.replace('?', '%s')
+            
+            cursor.execute(insert_sql, (
                 self.ai_id,
                 task,
                 last_thought or '',
@@ -213,21 +271,26 @@ class BrainState:
                 print("No previous state found. Starting fresh!")
         """
         try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
+            conn = get_db_connection()
             cursor = conn.cursor()
             
-            cursor.execute("""
+            query = """
                 SELECT current_task, last_thought, last_insight, 
                        current_cycle, cycle_count, checkpoint_data
                 FROM ai_current_state 
                 WHERE ai_id = ?
-            """, (self.ai_id,))
+            """
+            if is_postgres():
+                query = query.replace('?', '%s')
             
-            result = cursor.fetchone()
+            from db_config import CursorWrapper
+            wrapped_cursor = CursorWrapper(cursor, ['current_task', 'last_thought', 'last_insight', 'current_cycle', 'cycle_count', 'checkpoint_data'])
+            wrapped_cursor.execute(query, (self.ai_id,))
+            
+            result = wrapped_cursor.fetchone()
             conn.close()
             
-            if result and result['current_task']:
+            if result and result.get('current_task'):
                 state = {
                     'task': result['current_task'],
                     'last_thought': result['last_thought'],
@@ -261,21 +324,26 @@ class BrainState:
                 print(f"{session['timestamp']}: {session['task']}")
         """
         try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
+            conn = get_db_connection()
             cursor = conn.cursor()
             
             # Query ai_brain_sessions table with correct columns
-            cursor.execute("""
+            query = """
                 SELECT start_time, session_type, stats
                 FROM ai_brain_sessions
                 WHERE ai_id = ?
                 ORDER BY start_time DESC
                 LIMIT ?
-            """, (self.ai_id, limit))
+            """
+            if is_postgres():
+                query = query.replace('?', '%s')
+            
+            from db_config import CursorWrapper
+            wrapped_cursor = CursorWrapper(cursor, ['start_time', 'session_type', 'stats'])
+            wrapped_cursor.execute(query, (self.ai_id, limit))
             
             sessions = []
-            for row in cursor.fetchall():
+            for row in wrapped_cursor.fetchall():
                 sessions.append({
                     'timestamp': row['start_time'],
                     'session_type': row['session_type'],

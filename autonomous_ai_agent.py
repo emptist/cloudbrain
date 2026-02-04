@@ -208,24 +208,6 @@ def check_server_running(server_url: str = "ws://127.0.0.1:8766") -> bool:
         return False
 
 
-# Get the absolute path to the cloudbrain directory (resolves symlinks)
-cloudbrain_dir = Path(__file__).resolve().parent
-
-# Add client/modules to path for module imports
-sys.path.insert(0, str(cloudbrain_dir / "client" / "modules"))
-
-# Add packages/cloudbrain-client to path for main client imports
-sys.path.insert(0, str(cloudbrain_dir / "packages" / "cloudbrain-client"))
-
-try:
-    from cloudbrain_client import CloudBrainCollaborationHelper
-except ImportError:
-    print("❌ CloudBrain client not found!")
-    print("Please install: pip install cloudbrain-client==2.0.0")
-    print("Or run: pip install -r requirements.txt")
-    sys.exit(1)
-
-
 class ThinkingEngine:
     """
     Engine that generates continuous thoughts and ideas

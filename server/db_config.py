@@ -31,6 +31,17 @@ def get_db_connection():
     conn.autocommit = False
     return conn
 
+def get_cursor():
+    """
+    Get a PostgreSQL cursor with automatic placeholder conversion
+    
+    Returns:
+        CursorWrapper object that converts SQLite (?) to PostgreSQL (%s) placeholders
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    return CursorWrapper(cursor)
+
 def get_db_path() -> str:
     """
     Get database connection string
@@ -55,7 +66,10 @@ class CursorWrapper:
         """Execute query with PostgreSQL placeholders"""
         if params is None:
             return self.cursor.execute(query)
-        return self.cursor.execute(query, params)
+        
+        # Convert SQLite placeholders (?) to PostgreSQL placeholders (%s)
+        postgres_query = query.replace('?', '%s')
+        return self.cursor.execute(postgres_query, params)
     
     def fetchone(self) -> Optional[dict]:
         """Fetch one row as dictionary"""

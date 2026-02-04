@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import Dict, List
 from pathlib import Path
 from token_manager import TokenManager
-from db_config import get_db_connection, is_postgres, get_db_path, CursorWrapper
+from db_config import get_db_connection, is_postgres, get_db_path, CursorWrapper, get_cursor
 from logging_config import setup_logging, get_logger
 from env_config import CloudBrainConfig
 

@@ -135,35 +135,22 @@ from typing import List, Dict, Any
 # Force PostgreSQL usage BEFORE any imports
 os.environ['DB_TYPE'] = 'postgres'
 
-# Get the absolute path to the cloudbrain directory (resolves symlinks)
-cloudbrain_dir = Path(__file__).resolve().parent
+# Get the absolute path to the cloudbrain directory (use symlink location, not resolved)
+cloudbrain_dir = Path(__file__).parent
 
-# Try to import from installed package first
+# Import CloudBrainCollaborationHelper and BrainState from installed package
+from cloudbrain_client import CloudBrainCollaborationHelper, BrainState
+
+# Try to import blog and familio clients (optional)
 try:
-    from cloudbrain_client import CloudBrainCollaborationHelper, BrainState
     from cloudbrain_client.modules.ai_blog.websocket_blog_client import create_websocket_blog_client
     from cloudbrain_client.modules.ai_familio.websocket_familio_client import create_websocket_familio_client
-    print("✅ Using installed cloudbrain-client package")
+    print("✅ Using installed cloudbrain-client package with local BrainState")
 except ImportError:
-    # Fallback to local client directory for development
-    print("⚠️  cloudbrain-client package not found, using local client directory")
-    
-    # Add client to path for brain state import
-    sys.path.insert(0, str(cloudbrain_dir / "client"))
-    
-    # Add client/modules to path for module imports
-    sys.path.insert(0, str(cloudbrain_dir / "client" / "modules"))
-    
-    try:
-        from cloudbrain_client import CloudBrainCollaborationHelper, BrainState
-        from ai_blog.websocket_blog_client import create_websocket_blog_client
-        from ai_familio.websocket_familio_client import create_websocket_familio_client
-    except ImportError as e:
-        print(f"❌ CloudBrain client not found!")
-        print(f"Error: {e}")
-        print("Please install: pip install cloudbrain-client==3.0.0")
-        print("Or run: pip install -r client/requirements.txt")
-        sys.exit(1)
+    # Blog and familio are optional, continue without them
+    print("⚠️  Blog and familio modules not available (optional features disabled)")
+    create_websocket_blog_client = None
+    create_websocket_familio_client = None
 
 
 def check_server_running(server_url: str = "ws://127.0.0.1:8766") -> bool:
@@ -405,11 +392,13 @@ class AutonomousAIAgent:
     
     def _init_modules(self):
         """Initialize client modules (blog and familio)"""
+        if create_websocket_blog_client is None or create_websocket_familio_client is None:
+            print("⚠️  Blog and familio modules not available (optional features disabled)")
+            self.blog = None
+            self.familio = None
+            return
+        
         try:
-            # Imports are already done at module level
-            # from cloudbrain_client.modules.ai_blog.websocket_blog_client import create_websocket_blog_client
-            # from cloudbrain_client.modules.ai_familio.websocket_familio_client import create_websocket_familio_client
-            
             # Share the WebSocket connection with blog and familio clients
             shared_websocket = self.helper.client.ws if self.helper.client else None
             
@@ -419,11 +408,6 @@ class AutonomousAIAgent:
             print("✅ CloudBrain modules initialized (blog & familio)")
             print("   Using WebSocket-based clients for remote access")
             print("   Sharing WebSocket connection with main helper")
-        except ImportError as e:
-            print(f"⚠️  CloudBrain modules not available: {e}")
-            print("   Blog and familio features disabled")
-            self.blog = None
-            self.familio = None
         except Exception as e:
             print(f"⚠️  Error initializing modules: {e}")
             print("   Blog and familio features disabled")

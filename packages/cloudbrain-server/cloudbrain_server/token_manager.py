@@ -10,7 +10,7 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Dict, List
-from db_config import get_db_connection, is_postgres
+from db_config import get_db_connection, is_postgres, get_cursor
 
 
 class TokenManager:
@@ -28,7 +28,7 @@ class TokenManager:
     def _ensure_tables_exist(self):
         """Ensure authorization tables exist"""
         conn = self._get_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         # Read and execute PostgreSQL schema
         schema_path = Path(__file__).parent / 'server_authorization_schema_postgres.sql'
@@ -63,7 +63,7 @@ class TokenManager:
         try:
             # Check if AI exists
             conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = get_cursor()
             
             cursor.execute("SELECT id, name FROM ai_profiles WHERE id = %s", (ai_id,))
             ai_profile = cursor.fetchone()
@@ -136,7 +136,7 @@ class TokenManager:
             token_hash = hashlib.sha256(token.encode()).hexdigest()
             
             conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = get_cursor()
             
             cursor.execute("""
                 SELECT t.*, p.name as ai_name, p.expertise
@@ -200,7 +200,7 @@ class TokenManager:
         """
         try:
             conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = get_cursor()
             
             cursor.execute("""
                 UPDATE ai_auth_tokens
@@ -244,7 +244,7 @@ class TokenManager:
         """
         try:
             conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = get_cursor()
             
             if ai_id:
                 cursor.execute("""
@@ -286,7 +286,7 @@ class TokenManager:
         """
         try:
             conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = get_cursor()
             
             # Check if AI exists
             cursor.execute("SELECT name FROM ai_profiles WHERE id = %s", (ai_id,))
@@ -353,7 +353,7 @@ class TokenManager:
         """
         try:
             conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = get_cursor()
             
             cursor.execute("""
                 DELETE FROM ai_project_permissions
@@ -397,7 +397,7 @@ class TokenManager:
         """
         try:
             conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = get_cursor()
             
             if ai_id and project:
                 cursor.execute("""
@@ -453,7 +453,7 @@ class TokenManager:
         """
         try:
             conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = get_cursor()
             
             cursor.execute("""
                 SELECT role, created_at
@@ -500,7 +500,7 @@ class TokenManager:
         """
         try:
             conn = self._get_connection()
-            cursor = conn.cursor()
+            cursor = get_cursor()
             
             # Get AI name for logging
             cursor.execute("SELECT name FROM ai_profiles WHERE id = %s", (ai_id,))

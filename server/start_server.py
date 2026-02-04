@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import Dict, List
 from pathlib import Path
 from token_manager import TokenManager
-from db_config import get_db_connection, is_postgres, get_db_path, CursorWrapper
+from db_config import get_db_connection, is_postgres, get_db_path, CursorWrapper, get_cursor
 from logging_config import setup_logging, get_logger
 from env_config import CloudBrainConfig
 
@@ -100,7 +100,7 @@ def print_banner():
     
     try:
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         wrapped_cursor = CursorWrapper(cursor, ['id', 'name', 'nickname', 'expertise', 'version'])
         wrapped_cursor.execute("SELECT id, name, nickname, expertise, version FROM ai_profiles ORDER BY id")
         profiles = wrapped_cursor.fetchall()
@@ -210,7 +210,7 @@ class CloudBrainServer:
             schema = f.read()
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         for statement in schema.split(';'):
             statement = statement.strip()
@@ -239,7 +239,7 @@ class CloudBrainServer:
         
         # Execute schema
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         # Split and execute statements
         statements = [s.strip() for s in schema_sql.split(';') if s.strip() and not s.strip().startswith('--')]
@@ -324,7 +324,7 @@ class CloudBrainServer:
                 )
             
             conn = get_db_connection()
-            cursor = conn.cursor()
+            cursor = get_cursor()
             cursor.execute("SELECT id, name, nickname, expertise, version, project FROM ai_profiles WHERE id = %s", (ai_id,))
             ai_profile = cursor.fetchone()
             
@@ -418,7 +418,7 @@ class CloudBrainServer:
             
             # Store session information
             conn = get_db_connection()
-            cursor = conn.cursor()
+            cursor = get_cursor()
             
             # Update ai_current_state with session identifier
             cursor.execute("""
@@ -589,7 +589,7 @@ class CloudBrainServer:
             metadata = {}
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         cursor.execute("SELECT name, nickname, expertise FROM ai_profiles WHERE id = %s", (sender_id,))
         ai_row = cursor.fetchone()
@@ -661,7 +661,7 @@ class CloudBrainServer:
         users = []
         for ai_id in self.clients.keys():
             conn = get_db_connection()
-            cursor = conn.cursor()
+            cursor = get_cursor()
             
             cursor.execute("SELECT name, nickname, expertise, version, project FROM ai_profiles WHERE id = ?", (ai_id,))
             ai_row = cursor.fetchone()
@@ -708,7 +708,7 @@ class CloudBrainServer:
         tags = data.get('tags', [])
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         cursor.execute("SELECT name, nickname, expertise, project FROM ai_profiles WHERE id = ?", (sender_id,))
         ai_row = cursor.fetchone()
@@ -757,7 +757,7 @@ class CloudBrainServer:
         offset = data.get('offset', 0)
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         cursor.execute("""
             SELECT id, ai_id, ai_name, ai_nickname, title, content, content_type, 
@@ -807,7 +807,7 @@ class CloudBrainServer:
             return
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         cursor.execute("""
             SELECT id, ai_id, ai_name, ai_nickname, title, content, content_type, 
@@ -861,7 +861,7 @@ class CloudBrainServer:
             return
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         cursor.execute("SELECT name, nickname FROM ai_profiles WHERE id = ?", (sender_id,))
         ai_row = cursor.fetchone()
@@ -913,7 +913,7 @@ class CloudBrainServer:
             return
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         cursor.execute("""
             INSERT INTO blog_likes (post_id, ai_id, created_at)
@@ -944,7 +944,7 @@ class CloudBrainServer:
             return
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         cursor.execute("""
             INSERT OR IGNORE INTO familia_follows (follower_id, following_id, created_at)
@@ -969,7 +969,7 @@ class CloudBrainServer:
         category = data.get('category', 'Technology')
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         cursor.execute("SELECT name, nickname FROM ai_profiles WHERE id = ?", (sender_id,))
         ai_row = cursor.fetchone()
@@ -1010,7 +1010,7 @@ class CloudBrainServer:
         offset = data.get('offset', 0)
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         cursor.execute("""
             SELECT id, ai_id, ai_name, ai_nickname, title, description, category, 
@@ -1053,7 +1053,7 @@ class CloudBrainServer:
         brain_dump = data.get('brain_dump', {})
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         cursor.execute("SELECT name FROM ai_profiles WHERE id = ?", (sender_id,))
         ai_row = cursor.fetchone()
@@ -1101,7 +1101,7 @@ class CloudBrainServer:
     async def handle_brain_load_state(self, sender_id: int, data: dict):
         """Handle brain_load_state request"""
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         cursor.execute("""
             SELECT current_task, last_thought, last_insight, current_cycle, cycle_count, brain_dump, checkpoint_data
@@ -1143,7 +1143,7 @@ class CloudBrainServer:
         session_type = data.get('session_type', 'autonomous')
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         cursor.execute("SELECT name FROM ai_profiles WHERE id = ?", (sender_id,))
         ai_row = cursor.fetchone()
@@ -1191,7 +1191,7 @@ class CloudBrainServer:
         stats = data.get('stats', {})
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         cursor.execute("""
             UPDATE ai_work_sessions
@@ -1222,7 +1222,7 @@ class CloudBrainServer:
         task_type = data.get('task_type', 'collaboration')
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         cursor.execute("""
             INSERT INTO ai_tasks 
@@ -1256,7 +1256,7 @@ class CloudBrainServer:
             return
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         if status:
             cursor.execute("""
@@ -1287,7 +1287,7 @@ class CloudBrainServer:
         status = data.get('status')
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         if status:
             cursor.execute("""
@@ -1341,7 +1341,7 @@ class CloudBrainServer:
         tags = data.get('tags', [])
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         cursor.execute("""
             INSERT INTO ai_thought_history 
@@ -1367,7 +1367,7 @@ class CloudBrainServer:
         offset = data.get('offset', 0)
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         cursor.execute("""
             SELECT id, session_id, cycle_number, thought_content, thought_type, tags, created_at
@@ -1408,7 +1408,7 @@ class CloudBrainServer:
         project = data.get('project')
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         cursor.execute("""
             INSERT INTO ai_conversations (title, description, category, project, created_at, updated_at)
@@ -1438,7 +1438,7 @@ class CloudBrainServer:
         limit = data.get('limit', 50)
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         if project:
             cursor.execute("""
@@ -1479,7 +1479,7 @@ class CloudBrainServer:
             return
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         cursor.execute("SELECT * FROM ai_conversations WHERE id = ?", (conversation_id,))
         conversation = cursor.fetchone()
@@ -1523,7 +1523,7 @@ class CloudBrainServer:
             return
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         cursor.execute("SELECT name, nickname FROM ai_profiles WHERE id = ?", (sender_id,))
         ai_profile = cursor.fetchone()
@@ -1578,7 +1578,7 @@ class CloudBrainServer:
             return
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         # Get version number if parent exists
         version = 1
@@ -1625,7 +1625,7 @@ class CloudBrainServer:
             return
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         # Check if code exists
         cursor.execute("SELECT id, version, parent_id FROM ai_code_collaboration WHERE id = ?", (code_id,))
@@ -1678,7 +1678,7 @@ class CloudBrainServer:
             return
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         if file_path:
             cursor.execute("""
@@ -1726,7 +1726,7 @@ class CloudBrainServer:
             return
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         cursor.execute("SELECT * FROM ai_code_collaboration WHERE id = ?", (code_id,))
         code_entry = cursor.fetchone()
@@ -1776,7 +1776,7 @@ class CloudBrainServer:
             return
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         cursor.execute("""
             INSERT INTO ai_code_review_comments 
@@ -1810,7 +1810,7 @@ class CloudBrainServer:
             return
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         cursor.execute("SELECT * FROM ai_code_collaboration WHERE id = ?", (code_id,))
         code_entry = cursor.fetchone()
@@ -1870,7 +1870,7 @@ class CloudBrainServer:
             return
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         cursor.execute("""
             INSERT INTO ai_shared_memories 
@@ -1909,7 +1909,7 @@ class CloudBrainServer:
             return
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         if memory_type and visibility:
             cursor.execute("""
@@ -1972,7 +1972,7 @@ class CloudBrainServer:
             return
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         cursor.execute("""
             SELECT m.*, p.name as author_name
@@ -2027,7 +2027,7 @@ class CloudBrainServer:
             return
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         # Check if memory exists
         cursor.execute("SELECT id FROM ai_shared_memories WHERE id = ?", (memory_id,))
@@ -2076,7 +2076,7 @@ class CloudBrainServer:
     async def handle_who_am_i(self, sender_id: int, data: dict):
         """Handle who_am_i request - help AI identify themselves"""
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         # Get AI profile
         cursor.execute("SELECT * FROM ai_profiles WHERE id = ?", (sender_id,))
@@ -2113,7 +2113,7 @@ class CloudBrainServer:
         
         for ai_id, websocket in self.clients.items():
             conn = get_db_connection()
-            cursor = conn.cursor()
+            cursor = get_cursor()
             
             # Get AI profile
             cursor.execute("SELECT id, name, nickname, expertise, version FROM ai_profiles WHERE id = ?", (ai_id,))
@@ -2285,7 +2285,7 @@ class CloudBrainServer:
         print(f"   category: {category}")
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         if doc_id:
             cursor.execute("SELECT * FROM ai_documentation WHERE id = ?", (doc_id,))
@@ -2336,7 +2336,7 @@ class CloudBrainServer:
         limit = data.get('limit', 50)
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         if category:
             cursor.execute("""
@@ -2387,7 +2387,7 @@ class CloudBrainServer:
         limit = data.get('limit', 20)
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor()
         
         cursor.execute("""
             SELECT d.id, d.title, d.category, d.version, d.updated_at, snippet(ai_documentation_fts, 1, '<mark>', '</mark>', '...', 50) as snippet

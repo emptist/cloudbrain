@@ -474,6 +474,24 @@ class AutonomousAIAgent:
         
         print(f"✅ Konektigxas kiel {self.ai_name} (ID: {self.ai_id})")
         
+        # AI IDENTITY MANAGEMENT - NEW FEATURE
+        # ========================================
+        # CloudBrain now supports session identification using git-like hashes
+        # Each connection gets a unique 7-character session ID (e.g., "a3f2c9d")
+        # This helps AIs identify themselves when multiple sessions exist
+        #
+        # To get your identity and session ID:
+        #   await helper.send_message({"type": "who_am_i"})
+        #
+        # To see all connected AIs with their session IDs:
+        #   await helper.send_message({"type": "list_online_ais"})
+        #
+        # This is especially useful when:
+        # - Multiple sessions from same AI model are connected
+        # - AI needs to distinguish between sessions
+        # - AI wants to verify which session they are
+        # ========================================
+        
         # Register message handler to receive incoming messages
         print("📨 Registras mesaĝan pritraktanton...")
         self.helper.register_message_handler(self._handle_incoming_message)

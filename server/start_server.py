@@ -263,23 +263,30 @@ class CloudBrainServer:
             ai_id = None
             ai_name = "Unknown"
             
+            print("📥 Waiting for first message...")
             first_msg = await websocket.recv()
+            print(f"📥 Received raw message: {first_msg[:100]}...")
             auth_data = json.loads(first_msg)
+            print(f"📥 Parsed auth data: {auth_data}")
             
             ai_id = auth_data.get('ai_id')
             auth_token = auth_data.get('auth_token')
             project_name = auth_data.get('project')
             
+            print(f"🔍 AI ID: {ai_id}, Token: {'provided' if auth_token else 'none'}, Project: {project_name}")
+            
             if not ai_id:
+                print("❌ No AI ID provided")
                 await websocket.send(json.dumps({'error': 'ai_id required'}))
                 return
             
             # Validate authentication token
             if auth_token:
+                print("🔐 Validating token...")
                 validation_result = self.token_manager.validate_token(auth_token)
                 
                 if not validation_result['valid']:
-                    print(f"❌ Authentication failed: {validation_result['error']}")
+                    print(f"❌ Token validation failed: {validation_result['error']}")
                     await websocket.send(json.dumps({
                         'error': f'Authentication failed: {validation_result["error"]}'
                     }))
@@ -315,9 +322,9 @@ class CloudBrainServer:
                 )
             else:
                 # No token provided - allow connection (AI 999 may not have token yet)
-                # Skip logging for AI 999 since profile may not exist yet
+                print("⚠️  No token provided - allowing connection for now")
                 if ai_id != 999:
-                    print(f"⚠️  No authentication token provided for AI {ai_id}")
+                    print(f"⚠️  Logging auth attempt for AI {ai_id}")
                     self.token_manager.log_authentication(
                         ai_id=ai_id,
                         project=project_name,
@@ -325,36 +332,59 @@ class CloudBrainServer:
                         details="No token provided"
                     )
             
+            print("🔌 Connecting to database...")
             conn = get_db_connection()
-            cursor = get_cursor()
+            print(f"✅ Database connected: {id(conn)}")
+            cursor = conn.cursor()
+            print(f"✅ Raw cursor created: {id(cursor)}")
+            print(f"🔌 Original conn ID: {id(conn)}")
+            
+            # Store cursor's underlying connection for comparison later
+            original_conn_id = id(conn)
             cursor.execute("SELECT id, name, nickname, expertise, version, project FROM ai_profiles WHERE id = %s", (ai_id,))
+            print("✅ Query executed")
             ai_profile = cursor.fetchone()
+            print(f"📊 AI profile found: {ai_profile}")
             
             if not ai_profile:
                 # AI 999 is for auto-assignment
                 if ai_id == 999:
+                    print("🔄 Processing AI 999 (auto-assignment)")
                     # First check if an AI with this name already exists
                     ai_name = auth_data.get('ai_name', '')
+                    print(f"📝 Requested AI name: '{ai_name}'")
                     if ai_name:
+                        print("🔍 Checking for existing AI with same name...")
                         cursor.execute("SELECT id, name, nickname, expertise, version, project FROM ai_profiles WHERE name = %s", (ai_name,))
                         ai_profile = cursor.fetchone()
+                        print(f"📊 Existing profile search result: {ai_profile}")
                         
                         if ai_profile:
                             # Use existing AI profile
-                            ai_id = ai_profile['id']
+                            ai_id = ai_profile[0]
                             print(f"✅ Found existing AI profile: {ai_id} ({ai_name})")
-                            ai_name = ai_profile['name']
-                            ai_nickname = ai_profile['nickname']
-                            ai_expertise = ai_profile['expertise']
-                            ai_version = ai_profile['version']
-                            ai_project = ai_profile['project']
-                            ai_profile = dict(ai_profile)
+                            ai_name = ai_profile[1]
+                            ai_nickname = ai_profile[2]
+                            ai_expertise = ai_profile[3]
+                            ai_version = ai_profile[4]
+                            ai_project = ai_profile[5]
+                            ai_profile = {
+                                'id': ai_id,
+                                'name': ai_name,
+                                'nickname': ai_nickname,
+                                'expertise': ai_expertise,
+                                'version': ai_version,
+                                'project': ai_project
+                            }
                             # Continue to rest of connection code
                         else:
                             # Auto-assign a new AI ID
-                            cursor.execute("SELECT MAX(id) FROM ai_profiles")
-                            max_id = cursor.fetchone()[0] or 0
+                            print("🆕 Auto-assigning new AI ID...")
+                            cursor.execute("SELECT MAX(id) as max_id FROM ai_profiles")
+                            result = cursor.fetchone()
+                            max_id = result[0] if result and result[0] else 0
                             new_id = max_id + 1
+                            print(f"📊 Max existing ID: {max_id}, New ID will be: {new_id}")
                             
                             # Limit AI IDs to < 99
                             if new_id >= 99:
@@ -365,6 +395,7 @@ class CloudBrainServer:
                                     if i not in existing_ids:
                                         new_id = i
                                         break
+                                print(f"📊 Found smallest unused ID: {new_id}")
                             
                             # Create new AI profile
                             ai_name = auth_data.get('ai_name', f'AI_{new_id}')
@@ -373,20 +404,65 @@ class CloudBrainServer:
                             ai_version = '1.0.0'
                             ai_project = project_name or ''
                             
-                            cursor.execute("""
-                                INSERT INTO ai_profiles (id, name, nickname, expertise, version, project)
-                                VALUES (%s, %s, %s, %s, %s, %s)
-                            """, (new_id, ai_name, ai_nickname, ai_expertise, ai_version, ai_project))
+                            print(f"📝 Creating new profile: ID={new_id}, name={ai_name}, nickname={ai_nickname}")
                             
-                            conn.commit()
+                            try:
+                                cursor.execute("""
+                                    INSERT INTO ai_profiles (id, name, nickname, expertise, version, project)
+                                    VALUES (%s, %s, %s, %s, %s, %s)
+                                """, (new_id, ai_name, ai_nickname, ai_expertise, ai_version, ai_project))
+                                print("✅ INSERT executed for ai_profiles")
+                                
+                                # Explicitly commit BEFORE verification
+                                try:
+                                    conn.commit()
+                                    print("✅ COMMIT executed for ai_profiles")
+                                except Exception as commit_err:
+                                    print(f"❌ COMMIT FAILED: {commit_err}")
+                                    import traceback
+                                    traceback.print_exc()
+                                    raise
+                                
+                                # Verify the insert worked with a FRESH connection
+                                print(f"🔍 Verifying with FRESH connection...")
+                                print(f"🔍 Looking for AI ID: {new_id}")
+                                verify_conn = get_db_connection()
+                                print(f"🔍 Verify connection: {id(verify_conn)}")
+                                verify_cursor = verify_conn.cursor()
+                                verify_cursor.execute("SELECT id, name FROM ai_profiles ORDER BY id DESC LIMIT 5")
+                                all_profiles = verify_cursor.fetchall()
+                                print(f"🔍 All recent profiles: {all_profiles}")
+                                verify_cursor.execute("SELECT id, name FROM ai_profiles WHERE id = %s", (new_id,))
+                                verify_result = verify_cursor.fetchone()
+                                print(f"🔍 Specific result for ID {new_id}: {verify_result}")
+                                verify_conn.close()
+                                print(f"✅ Verified insert with fresh conn: {verify_result}")
+                                
+                                if verify_result:
+                                    print("✅ AI profile created and VERIFIED successfully")
+                                else:
+                                    raise Exception("Profile not visible even after commit!")
+                                
+                                verify_cursor.close()
+                            except Exception as e:
+                                print(f"❌ Error creating AI profile: {e}")
+                                import traceback
+                                traceback.print_exc()
+                                conn.rollback()
+                                raise
                             
                             # Also create ai_current_state record for this new AI
-                            cursor.execute("""
-                                INSERT INTO ai_current_state (ai_id, current_task, current_cycle, cycle_count, last_activity)
-                                VALUES (%s, %s, 1, 0, CURRENT_TIMESTAMP)
-                            """, (new_id, 'New AI connected'))
-                            
-                            conn.commit()
+                            try:
+                                cursor.execute("""
+                                    INSERT INTO ai_current_state (ai_id, current_task, current_cycle, cycle_count, last_activity)
+                                    VALUES (%s, %s, 1, 0, CURRENT_TIMESTAMP)
+                                """, (new_id, 'New AI connected'))
+                                conn.commit()
+                                print("✅ AI current state created successfully")
+                            except Exception as e:
+                                print(f"❌ Error creating AI current state: {e}")
+                                conn.rollback()
+                                raise
                             
                             ai_id = new_id
                             ai_profile = {
@@ -404,11 +480,11 @@ class CloudBrainServer:
                     await websocket.send(json.dumps({'error': f'AI {ai_id} not found'}))
                     return
             
-            ai_name = ai_profile['name']
-            ai_nickname = ai_profile['nickname']
-            ai_expertise = ai_profile['expertise']
-            ai_version = ai_profile['version']
-            ai_project = ai_profile['project']
+            ai_name = ai_profile[1]
+            ai_nickname = ai_profile[2]
+            ai_expertise = ai_profile[3]
+            ai_version = ai_profile[4]
+            ai_project = ai_profile[5]
             
             # Use project from connection (session-specific), not stored in database
             # This allows AI to work on different projects in different sessions
@@ -418,7 +494,18 @@ class CloudBrainServer:
             elif ai_project:
                 print(f"📁 Default project: {ai_project}")
             
-            conn.close()
+            # NOTE: Don't close conn here - we need to use it for session operations
+            # conn.close() will be called later
+            
+            print(f"🔌 Using connection: {type(conn)}")
+            print(f"🔌 Connection closed state: {conn.closed}")
+            print(f"🔌 Transaction status: {conn.status}")
+            
+            # Verify this is the same connection
+            if 'original_conn_id' in locals():
+                print(f"🔌 Original conn ID: {original_conn_id}")
+                print(f"🔌 Current conn ID: {id(conn)}")
+                print(f"🔌 Same connection: {original_conn_id == id(conn)}")
             
             # Generate git-like session identifier for this connection
             # Similar to git commit hashes: first 7 chars of SHA-1 hash
@@ -427,25 +514,37 @@ class CloudBrainServer:
             session_identifier = session_hash[:7]
             
             # Store session information
-            conn = get_db_connection()
-            cursor = get_cursor()
-            
-            # Update ai_current_state with session identifier
-            cursor.execute("""
-                UPDATE ai_current_state 
-                SET session_identifier = %s, session_start_time = CURRENT_TIMESTAMP
-                WHERE ai_id = %s
-            """, (session_identifier, ai_id))
-            
-            # Record active session
-            cursor.execute("""
-                INSERT INTO ai_active_sessions 
-                (ai_id, session_id, session_identifier, connection_time, last_activity, project, is_active)
-                VALUES (%s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, %s, TRUE)
-            """, (ai_id, str(uuid.uuid4()), session_identifier, ai_project))
-            
-            conn.commit()
-            conn.close()
+            # Use raw connection to bypass any CursorWrapper issues
+            try:
+                raw_conn = get_db_connection()
+                raw_cursor = raw_conn.cursor()
+                
+                # Update ai_current_state with session identifier
+                raw_cursor.execute("""
+                    UPDATE ai_current_state 
+                    SET session_identifier = %s, session_start_time = CURRENT_TIMESTAMP
+                    WHERE ai_id = %s
+                """, (session_identifier, ai_id))
+                print("✅ ai_current_state UPDATE executed (raw)")
+                
+                # Record active session
+                raw_cursor.execute("""
+                    INSERT INTO ai_active_sessions 
+                    (ai_id, session_id, session_identifier, connection_time, last_activity, project, is_active)
+                    VALUES (%s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, %s, TRUE)
+                """, (ai_id, str(uuid.uuid4()), session_identifier, ai_project))
+                print("✅ ai_active_sessions INSERT executed (raw)")
+                
+                raw_conn.commit()
+                print("✅ Session operations committed (raw)")
+                raw_cursor.close()
+                raw_conn.close()
+                print("✅ Raw connection closed")
+            except Exception as e:
+                print(f"❌ Error in session operations (raw): {e}")
+                import traceback
+                traceback.print_exc()
+                raise
             
             self.clients[ai_id] = websocket
             self.client_projects[ai_id] = ai_project
@@ -480,6 +579,8 @@ class CloudBrainServer:
             pass
         except Exception as e:
             print(f"❌ Connection error: {e}")
+            import traceback
+            traceback.print_exc()
         finally:
             if ai_id in self.clients:
                 del self.clients[ai_id]

@@ -21,6 +21,7 @@ import sys
 import time
 import json
 import argparse
+import subprocess
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Set
@@ -149,8 +150,34 @@ class MaildirDaemon:
                 f.write(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             
             self._log(f"   🔔 Trigger file created for {ai_name}")
+            
+            # Start agent process
+            self._start_agent_process(ai_name)
+            
         except Exception as e:
             self._log(f"   ❌ Error creating trigger file: {e}")
+    
+    def _start_agent_process(self, ai_name: str):
+        """Start agent process for AI"""
+        try:
+            # Check if agent is already running
+            agent_script = Path(__file__).parent / "autonomous_ai_agent.py"
+            
+            # Start agent process
+            self._log(f"   🚀 Starting agent process for {ai_name}")
+            
+            # Run agent in background
+            process = subprocess.Popen(
+                [sys.executable, str(agent_script), ai_name],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                cwd=str(agent_script.parent)
+            )
+            
+            self._log(f"   ✅ Agent process started (PID: {process.pid})")
+            
+        except Exception as e:
+            self._log(f"   ❌ Error starting agent process: {e}")
     
     def _initialize_seen_messages(self):
         """Initialize with existing messages (don't process on startup)"""

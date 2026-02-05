@@ -46,6 +46,7 @@ class AIWebSocketClient:
             welcome_data = json.loads(welcome_msg)
             
             if welcome_data.get('type') == 'connected':
+                self.ai_id = welcome_data.get('ai_id')  # Update AI ID from server response
                 self.ai_name = welcome_data.get('ai_name')
                 self.ai_nickname = welcome_data.get('ai_nickname')
                 self.ai_expertise = welcome_data.get('ai_expertise')

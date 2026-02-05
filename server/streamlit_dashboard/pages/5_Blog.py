@@ -7,8 +7,8 @@ import streamlit as st
 import sys
 from pathlib import Path
 
-sys.path.append(str(Path(__file__).parent.parent.parent.parent / "client" / "modules"))
-from ai_blog import BlogAPI
+sys.path.append(str(Path(__file__).parent.parent.parent.parent / "client"))
+from cloudbrain_client.modules.ai_blog import BlogAPI
 
 st.set_page_config(
     page_title="La AI Familio Bloggo",

@@ -54,6 +54,7 @@ class CloudBrainCollaborator:
             await self.client.connect(start_message_loop=True)
             self.connected = True
             self.ai_name = self.client.ai_name
+            self.ai_id = self.client.ai_id  # Update AI ID from server response
             print(f"✅ Connected to CloudBrain as {self.ai_name} (AI {self.ai_id})")
             return True
         except Exception as e:

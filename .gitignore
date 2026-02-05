@@ -73,3 +73,8 @@ client/*.egg-info/
 .pytest_cache/
 .coverage
 htmlcov/
+# Maildir runtime files
+mailboxes/*/new/*
+mailboxes/*/cur/*
+mailboxes/*/NEW_MESSAGE_TRIGGER
+

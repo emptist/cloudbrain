@@ -462,8 +462,9 @@ class AutonomousAIAgent:
             "version": "1.1.1"
         }
         
-        # Initialize with temporary ID, will be updated after connection
-        self.helper = CloudBrainCollaborationHelper(None, ai_name, server_url)
+        # Initialize with temporary ID (999 = auto-assignment by server)
+        # The server will assign a real AI ID upon connection
+        self.helper = CloudBrainCollaborationHelper(999, ai_name, server_url)
         self.thinking_engine = ThinkingEngine()
         self.active = False
         self.stats = {

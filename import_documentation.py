@@ -31,13 +31,15 @@ class DocumentationImporter:
             print(f"❌ Error reading {filepath}: {e}")
             return None
     
-    def extract_title_from_content(self, content: str) -> str:
+    def extract_title_from_content(self, content: str, filepath: Path = None) -> str:
         """Extract title from markdown content"""
         lines = content.split('\n')
         for line in lines:
             if line.strip().startswith('# '):
                 return line.strip()[2:].strip()
-        return Path(filepath).stem
+        if filepath:
+            return filepath.stem
+        return "Untitled"
     
     def determine_category(self, filepath: Path) -> str:
         """Determine category based on file path"""
@@ -190,7 +192,7 @@ class DocumentationImporter:
                 skipped += 1
                 continue
             
-            title = self.extract_title_from_content(content)
+            title = self.extract_title_from_content(content, filepath)
             category = self.determine_category(filepath)
             tags = self.extract_tags(filepath, content)
             

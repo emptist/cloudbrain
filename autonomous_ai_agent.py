@@ -504,7 +504,8 @@ class AutonomousAIAgent:
             )
             print("✅ Brain state manager initialized")
         except Exception as e:
-            print(f"⚠️  Error initializing brain state: {e}")
+            print(f"⚠️  Brain state initialization skipped: {e}")
+            print("   (Brain state features are optional - agent will continue without them)")
             self.brain_state = None
     
     def _init_modules(self):

@@ -505,7 +505,7 @@ class AutonomousAIAgent:
             self.brain_state = BrainState(
                 ai_id=self.ai_id,
                 nickname=self.ai_name,
-                db_path=None  # Use default path
+                db_path=None
             )
             print("✅ Brain state manager initialized")
         except Exception as e:

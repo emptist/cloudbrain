@@ -502,12 +502,17 @@ class AutonomousAIAgent:
     def _init_brain_state(self):
         """Initialize brain state manager"""
         try:
-            self.brain_state = BrainState(
-                ai_id=self.ai_id,
-                nickname=self.ai_name,
-                db_path=None
-            )
-            print("✅ Brain state manager initialized")
+            if self.brain_state is not None and self.brain_state.ai_id != self.ai_id:
+                print(f"🔄 Reinitializing brain state with correct AI ID: {self.ai_id}")
+                self.brain_state = None
+            
+            if self.brain_state is None:
+                self.brain_state = BrainState(
+                    ai_id=self.ai_id,
+                    nickname=self.ai_name,
+                    db_path=None
+                )
+                print("✅ Brain state manager initialized")
         except Exception as e:
             print(f"⚠️  Brain state initialization skipped: {e}")
             print("   (Brain state features are optional - agent will continue without them)")

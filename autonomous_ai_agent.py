@@ -1741,6 +1741,20 @@ Kion vi pensas pri tio?
         
         while self.active:
             try:
+                # Watch for trigger file (created by daemon)
+                trigger_file = self.ai_maildir / "NEW_MESSAGE_TRIGGER"
+                if trigger_file.exists():
+                    print(f"\n🔔 Trigger file detected - New message!")
+                    
+                    # Read trigger info
+                    with open(trigger_file, 'r') as f:
+                        trigger_content = f.read()
+                    print(f"   {trigger_content}")
+                    
+                    # Delete trigger file
+                    trigger_file.unlink()
+                    print(f"   ✅ Trigger file deleted")
+                
                 new_dir = self.ai_maildir / 'new'
                 if new_dir.exists():
                     for msg_file in new_dir.glob("*"):

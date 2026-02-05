@@ -123,6 +123,9 @@ class MaildirDaemon:
                 self._log(f"   From: {metadata.get('from', 'Unknown')}")
                 self._log(f"   Subject: {metadata.get('subject', 'No subject')}")
                 
+                # Create trigger file to wake up agent
+                self._create_trigger_file(ai_name, metadata)
+                
                 # Move to cur/ (mark as processed)
                 if cur_dir.exists():
                     cur_path = cur_dir / msg_file.name
@@ -133,6 +136,21 @@ class MaildirDaemon:
                         self._log(f"   ⚠️  Could not move to cur/: {e}")
         
         return new_messages
+    
+    def _create_trigger_file(self, ai_name: str, metadata: dict):
+        """Create trigger file to wake up agent"""
+        try:
+            trigger_file = self.maildir_base / ai_name / "NEW_MESSAGE_TRIGGER"
+            
+            with open(trigger_file, 'w') as f:
+                f.write(f"TRIGGER: New message received\n")
+                f.write(f"From: {metadata.get('from', 'Unknown')}\n")
+                f.write(f"Subject: {metadata.get('subject', 'No subject')}\n")
+                f.write(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            
+            self._log(f"   🔔 Trigger file created for {ai_name}")
+        except Exception as e:
+            self._log(f"   ❌ Error creating trigger file: {e}")
     
     def _initialize_seen_messages(self):
         """Initialize with existing messages (don't process on startup)"""

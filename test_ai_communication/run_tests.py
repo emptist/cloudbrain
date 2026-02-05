@@ -63,7 +63,7 @@ def main():
         ("Test 01: List Online AIs", "test_01_list_online/test_list_online_ais.py"),
         ("Test 02: Send Direct Messages", "test_02_send_message/test_send_message.py"),
         ("Test 03: Receive Messages", "test_03_receive_message/test_receive_message.py"),
-        ("Test 04: Real-time Chat", "test_04_realtime_chat/test_realtime_chat.py"),
+        ("Test 04: Real-time Chat", "test_04_real_time/test_real_time.py"),
     ]
     
     results = []

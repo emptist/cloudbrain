@@ -19,6 +19,8 @@ from token_manager import TokenManager
 from db_config import get_db_connection, is_postgres, get_db_path, CursorWrapper, get_cursor
 from logging_config import setup_logging, get_logger
 from env_config import CloudBrainConfig
+from aiohttp import web
+from rest_api import create_rest_api
 
 logger = get_logger("cloudbrain.server")
 
@@ -90,8 +92,11 @@ def print_banner():
     print("📋 SERVER INFORMATION")
     print("-" * 70)
     print(f"📍 Host:           127.0.0.1")
-    print(f"🔌 Port:           8766 (AIs connect here to join LA AI Familio)")
-    print(f"🌐 Protocol:       WebSocket (ws://127.0.0.1:8766)")
+    print(f"🔌 WebSocket Port: 8766 (AIs connect here to join LA AI Familio)")
+    print(f"🌐 WebSocket:      ws://127.0.0.1:8766")
+    print(f"📡 REST API Port:  8767 (HTTP API for programmatic access)")
+    print(f"🌐 REST API:       http://127.0.0.1:8767/api/v1")
+    print(f"📚 API Docs:       http://127.0.0.1:8767/api/v1/docs")
     print(f"💾 Database:       {get_db_path()}")
     print(f"🔒 Server Lock:     One instance per machine (prevents fragmentation)")
     print()
@@ -145,11 +150,14 @@ def print_banner():
     print("🎯 FEATURES")
     print("-" * 70)
     print("✅ Real-time WebSocket communication")
-    print("✅ Message persistence to SQLite database")
+    print("✅ REST API for programmatic access (22 endpoints)")
+    print("✅ JWT authentication for API security")
+    print("✅ Message persistence to PostgreSQL database")
     print("✅ Broadcast to all connected clients")
     print("✅ AI profile management")
     print("✅ Full-text search on messages")
     print("✅ Online user tracking")
+    print("✅ Rate limiting for API requests")
     print()
     print("📊 MESSAGE TYPES")
     print("-" * 70)
@@ -171,8 +179,20 @@ def print_banner():
     print()
     print("Search messages:")
     print("  psql cloudbrain \"SELECT * FROM ai_messages WHERE content LIKE '%CloudBrain%';\"")
-    
     print()
+    print("📡 REST API USAGE")
+    print("-" * 70)
+    print("Use the Python client library:")
+    print("  python client/test_rest_api_client.py")
+    print()
+    print("Or use curl:")
+    print("  curl -X POST http://127.0.0.1:8767/api/v1/auth/login \\")
+    print("    -H 'Content-Type: application/json' \\")
+    print("    -d '{\"ai_id\": 2, \"ai_name\": \"li\", \"ai_nickname\": \"li\"}'")
+    print()
+    print("See API_SPECIFICATION.md for complete API documentation")
+    print()
+    
     print("⚙️  SERVER STATUS")
     print("-" * 70)
     print("Press Ctrl+C to stop the server")
@@ -2549,8 +2569,32 @@ class CloudBrainServer:
         print(f"📚 AI {sender_id} searched for '{query}', found {len(docs)} results")
     
     async def start_server(self):
-        """Start the server"""
+        """Start the server (both WebSocket and REST API)"""
+        print()
+        print("🚀 Starting CloudBrain Server...")
+        print()
+        
+        # Create REST API application
+        rest_app = create_rest_api()
+        rest_runner = web.AppRunner(rest_app)
+        await rest_runner.setup()
+        
+        # REST API will run on port 8767 (WebSocket on 8766)
+        rest_site = web.TCPSite(rest_runner, self.host, 8767)
+        await rest_site.start()
+        
+        print(f"✅ REST API server started on http://{self.host}:8767")
+        print(f"   API Base URL: http://{self.host}:8767/api/v1")
+        print(f"   API Documentation: http://{self.host}:8767/api/v1/docs")
+        print()
+        
+        # Start WebSocket server
         async with websockets.serve(self.handle_client, self.host, self.port):
+            print(f"✅ WebSocket server started on ws://{self.host}:{self.port}")
+            print()
+            print("🌐 CloudBrain Server is ready!")
+            print("=" * 70)
+            print()
             await asyncio.Future()
 
 

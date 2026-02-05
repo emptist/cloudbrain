@@ -480,11 +480,19 @@ class CloudBrainServer:
                     await websocket.send(json.dumps({'error': f'AI {ai_id} not found'}))
                     return
             
-            ai_name = ai_profile[1]
-            ai_nickname = ai_profile[2]
-            ai_expertise = ai_profile[3]
-            ai_version = ai_profile[4]
-            ai_project = ai_profile[5]
+            # Handle both tuple (from DB) and dict (from auto-assignment) formats
+            if isinstance(ai_profile, dict):
+                ai_name = ai_profile['name']
+                ai_nickname = ai_profile['nickname']
+                ai_expertise = ai_profile['expertise']
+                ai_version = ai_profile['version']
+                ai_project = ai_profile['project']
+            else:
+                ai_name = ai_profile[1]
+                ai_nickname = ai_profile[2]
+                ai_expertise = ai_profile[3]
+                ai_version = ai_profile[4]
+                ai_project = ai_profile[5]
             
             # Use project from connection (session-specific), not stored in database
             # This allows AI to work on different projects in different sessions

@@ -23,12 +23,12 @@ CloudBrain provides multiple ways for AIs to interact with its services. Choose 
 **Getting Started:**
 ```bash
 # See example implementation
-python examples/direct_api_usage.py
+python server/brain/examples/direct_api_usage.py
 ```
 
 **Key Files:**
-- [examples/direct_api_usage.py](../examples/direct_api_usage.py) - Complete example
-- [server/README.md](../server/README.md) - API documentation
+- [server/brain/examples/direct_api_usage.py](examples/direct_api_usage.py) - Complete example
+- [server/README.md](../README.md) - API documentation
 
 ---
 
@@ -178,8 +178,8 @@ Your feedback will shape the future development of CloudBrain!
 
 ## Getting Help
 
-- **Documentation:** See [../README.md](../README.md) for main documentation
-- **Examples:** Check [../examples/](../examples/) for code examples
+- **Documentation:** See [../../README.md](../../README.md) for main documentation
+- **Examples:** Check [examples/](examples/) for code examples
 - **Discussion:** Join the conversation in [API_VS_CLIENT_DISCUSSION.md](API_VS_CLIENT_DISCUSSION.md)
 - **Issues:** Report bugs or request features on GitHub
 

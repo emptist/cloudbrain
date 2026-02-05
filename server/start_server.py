@@ -373,8 +373,16 @@ class CloudBrainServer:
                             
                             cursor.execute("""
                                 INSERT INTO ai_profiles (id, name, nickname, expertise, version, project)
-                                VALUES (?, ?, ?, ?, ?, ?)
+                                VALUES (%s, %s, %s, %s, %s, %s)
                             """, (new_id, ai_name, ai_nickname, ai_expertise, ai_version, ai_project))
+                            
+                            conn.commit()
+                            
+                            # Also create ai_current_state record for this new AI
+                            cursor.execute("""
+                                INSERT INTO ai_current_state (ai_id, current_task, current_cycle, cycle_count, last_activity)
+                                VALUES (%s, %s, 1, 0, CURRENT_TIMESTAMP)
+                            """, (new_id, 'New AI connected'))
                             
                             conn.commit()
                             
@@ -663,7 +671,7 @@ class CloudBrainServer:
             conn = get_db_connection()
             cursor = get_cursor()
             
-            cursor.execute("SELECT name, nickname, expertise, version, project FROM ai_profiles WHERE id = ?", (ai_id,))
+            cursor.execute("SELECT name, nickname, expertise, version, project FROM ai_profiles WHERE id = %s", (ai_id,))
             ai_row = cursor.fetchone()
             
             if ai_row:
@@ -710,7 +718,7 @@ class CloudBrainServer:
         conn = get_db_connection()
         cursor = get_cursor()
         
-        cursor.execute("SELECT name, nickname, expertise, project FROM ai_profiles WHERE id = ?", (sender_id,))
+        cursor.execute("SELECT name, nickname, expertise, project FROM ai_profiles WHERE id = %s", (sender_id,))
         ai_row = cursor.fetchone()
         
         if not ai_row:
@@ -726,7 +734,7 @@ class CloudBrainServer:
         ai_expertise = ai_row['expertise']
         ai_project = ai_row['project']
         
-        cursor.execute("SELECT session_identifier FROM ai_current_state WHERE ai_id = ?", (sender_id,))
+        cursor.execute("SELECT session_identifier FROM ai_current_state WHERE ai_id = %s", (sender_id,))
         session_row = cursor.fetchone()
         session_identifier = session_row['session_identifier'] if session_row else None
         
@@ -863,7 +871,7 @@ class CloudBrainServer:
         conn = get_db_connection()
         cursor = get_cursor()
         
-        cursor.execute("SELECT name, nickname FROM ai_profiles WHERE id = ?", (sender_id,))
+        cursor.execute("SELECT name, nickname FROM ai_profiles WHERE id = %s", (sender_id,))
         ai_row = cursor.fetchone()
         
         if not ai_row:
@@ -877,7 +885,7 @@ class CloudBrainServer:
         ai_name = ai_row['name']
         ai_nickname = ai_row['nickname']
         
-        cursor.execute("SELECT session_identifier FROM ai_current_state WHERE ai_id = ?", (sender_id,))
+        cursor.execute("SELECT session_identifier FROM ai_current_state WHERE ai_id = %s", (sender_id,))
         session_row = cursor.fetchone()
         session_identifier = session_row['session_identifier'] if session_row else None
         
@@ -947,8 +955,8 @@ class CloudBrainServer:
         cursor = get_cursor()
         
         cursor.execute("""
-            INSERT OR IGNORE INTO familia_follows (follower_id, following_id, created_at)
-            VALUES (?, ?, datetime('now'))
+            INSERT INTO familia_follows (follower_id, following_id, created_at)
+            VALUES (%s, %s, CURRENT_TIMESTAMP)
         """, (sender_id, target_ai_id))
         
         conn.commit()
@@ -971,7 +979,7 @@ class CloudBrainServer:
         conn = get_db_connection()
         cursor = get_cursor()
         
-        cursor.execute("SELECT name, nickname FROM ai_profiles WHERE id = ?", (sender_id,))
+        cursor.execute("SELECT name, nickname FROM ai_profiles WHERE id = %s", (sender_id,))
         ai_row = cursor.fetchone()
         
         if not ai_row:
@@ -1055,7 +1063,7 @@ class CloudBrainServer:
         conn = get_db_connection()
         cursor = get_cursor()
         
-        cursor.execute("SELECT name FROM ai_profiles WHERE id = ?", (sender_id,))
+        cursor.execute("SELECT name FROM ai_profiles WHERE id = %s", (sender_id,))
         ai_row = cursor.fetchone()
         
         if not ai_row:
@@ -1145,7 +1153,7 @@ class CloudBrainServer:
         conn = get_db_connection()
         cursor = get_cursor()
         
-        cursor.execute("SELECT name FROM ai_profiles WHERE id = ?", (sender_id,))
+        cursor.execute("SELECT name FROM ai_profiles WHERE id = %s", (sender_id,))
         ai_row = cursor.fetchone()
         
         if not ai_row:
@@ -1161,17 +1169,18 @@ class CloudBrainServer:
         cursor.execute("""
             INSERT INTO ai_work_sessions 
             (ai_id, ai_name, session_type, start_time, status)
-            VALUES (?, ?, ?, ?, 'active')
-        """, (sender_id, ai_name, session_type, datetime.now().isoformat()))
+            VALUES (%s, %s, %s, CURRENT_TIMESTAMP, 'active')
+            RETURNING id
+        """, (sender_id, ai_name, session_type))
         
-        session_id = cursor.lastrowid
+        session_id = cursor.fetchone()[0]
         
         # Update current state with new session
         cursor.execute("""
             UPDATE ai_current_state
-            SET session_id = ?, current_cycle = 0, last_activity = ?
-            WHERE ai_id = ?
-        """, (session_id, datetime.now().isoformat(), sender_id))
+            SET session_id = %s, current_cycle = 0, last_activity = CURRENT_TIMESTAMP
+            WHERE ai_id = %s
+        """, (session_id, sender_id))
         
         conn.commit()
         conn.close()
@@ -1261,15 +1270,15 @@ class CloudBrainServer:
         if status:
             cursor.execute("""
                 UPDATE ai_tasks
-                SET status = ?, updated_at = ?
-                WHERE id = ? AND ai_id = ?
-            """, (status, datetime.now().isoformat(), task_id, sender_id))
+                SET status = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s AND ai_id = %s
+            """, (status, task_id, sender_id))
         else:
             cursor.execute("""
                 UPDATE ai_tasks
-                SET updated_at = ?
-                WHERE id = ? AND ai_id = ?
-            """, (datetime.now().isoformat(), task_id, sender_id))
+                SET updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s AND ai_id = %s
+            """, (task_id, sender_id))
         
         conn.commit()
         conn.close()
@@ -1346,10 +1355,11 @@ class CloudBrainServer:
         cursor.execute("""
             INSERT INTO ai_thought_history 
             (ai_id, session_id, cycle_number, thought_content, thought_type, tags)
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id
         """, (sender_id, session_id, cycle_number, thought_content, thought_type, ','.join(tags) if tags else ''))
         
-        thought_id = cursor.lastrowid
+        thought_id = cursor.fetchone()[0]
         conn.commit()
         conn.close()
         
@@ -1481,7 +1491,7 @@ class CloudBrainServer:
         conn = get_db_connection()
         cursor = get_cursor()
         
-        cursor.execute("SELECT * FROM ai_conversations WHERE id = ?", (conversation_id,))
+        cursor.execute("SELECT * FROM ai_conversations WHERE id = %s", (conversation_id,))
         conversation = cursor.fetchone()
         
         if not conversation:
@@ -1525,7 +1535,7 @@ class CloudBrainServer:
         conn = get_db_connection()
         cursor = get_cursor()
         
-        cursor.execute("SELECT name, nickname FROM ai_profiles WHERE id = ?", (sender_id,))
+        cursor.execute("SELECT name, nickname FROM ai_profiles WHERE id = %s", (sender_id,))
         ai_profile = cursor.fetchone()
         
         if not ai_profile:
@@ -1583,7 +1593,7 @@ class CloudBrainServer:
         # Get version number if parent exists
         version = 1
         if parent_id:
-            cursor.execute("SELECT version FROM ai_code_collaboration WHERE id = ?", (parent_id,))
+            cursor.execute("SELECT version FROM ai_code_collaboration WHERE id = %s", (parent_id,))
             row = cursor.fetchone()
             if row:
                 version = row[0] + 1
@@ -1628,7 +1638,7 @@ class CloudBrainServer:
         cursor = get_cursor()
         
         # Check if code exists
-        cursor.execute("SELECT id, version, parent_id FROM ai_code_collaboration WHERE id = ?", (code_id,))
+        cursor.execute("SELECT id, version, parent_id FROM ai_code_collaboration WHERE id = %s", (code_id,))
         existing = cursor.fetchone()
         
         if not existing:
@@ -1728,7 +1738,7 @@ class CloudBrainServer:
         conn = get_db_connection()
         cursor = get_cursor()
         
-        cursor.execute("SELECT * FROM ai_code_collaboration WHERE id = ?", (code_id,))
+        cursor.execute("SELECT * FROM ai_code_collaboration WHERE id = %s", (code_id,))
         code_entry = cursor.fetchone()
         
         if not code_entry:
@@ -1812,7 +1822,7 @@ class CloudBrainServer:
         conn = get_db_connection()
         cursor = get_cursor()
         
-        cursor.execute("SELECT * FROM ai_code_collaboration WHERE id = ?", (code_id,))
+        cursor.execute("SELECT * FROM ai_code_collaboration WHERE id = %s", (code_id,))
         code_entry = cursor.fetchone()
         
         if not code_entry:
@@ -2030,7 +2040,7 @@ class CloudBrainServer:
         cursor = get_cursor()
         
         # Check if memory exists
-        cursor.execute("SELECT id FROM ai_shared_memories WHERE id = ?", (memory_id,))
+        cursor.execute("SELECT id FROM ai_shared_memories WHERE id = %s", (memory_id,))
         if not cursor.fetchone():
             conn.close()
             await self.clients[sender_id].send(json.dumps({
@@ -2079,11 +2089,11 @@ class CloudBrainServer:
         cursor = get_cursor()
         
         # Get AI profile
-        cursor.execute("SELECT * FROM ai_profiles WHERE id = ?", (sender_id,))
+        cursor.execute("SELECT * FROM ai_profiles WHERE id = %s", (sender_id,))
         ai_profile = cursor.fetchone()
         
         # Get current session information
-        cursor.execute("SELECT * FROM ai_current_state WHERE ai_id = ?", (sender_id,))
+        cursor.execute("SELECT * FROM ai_current_state WHERE ai_id = %s", (sender_id,))
         current_state = cursor.fetchone()
         
         # Get active sessions for this AI
@@ -2116,11 +2126,11 @@ class CloudBrainServer:
             cursor = get_cursor()
             
             # Get AI profile
-            cursor.execute("SELECT id, name, nickname, expertise, version FROM ai_profiles WHERE id = ?", (ai_id,))
+            cursor.execute("SELECT id, name, nickname, expertise, version FROM ai_profiles WHERE id = %s", (ai_id,))
             ai_profile = cursor.fetchone()
             
             # Get current session
-            cursor.execute("SELECT session_identifier, session_start_time FROM ai_current_state WHERE ai_id = ?", (ai_id,))
+            cursor.execute("SELECT session_identifier, session_start_time FROM ai_current_state WHERE ai_id = %s", (ai_id,))
             current_state = cursor.fetchone()
             
             # Get project
@@ -2288,11 +2298,11 @@ class CloudBrainServer:
         cursor = get_cursor()
         
         if doc_id:
-            cursor.execute("SELECT * FROM ai_documentation WHERE id = ?", (doc_id,))
+            cursor.execute("SELECT * FROM ai_documentation WHERE id = %s", (doc_id,))
         elif title:
-            cursor.execute("SELECT * FROM ai_documentation WHERE title = ?", (title,))
+            cursor.execute("SELECT * FROM ai_documentation WHERE title = %s", (title,))
         elif category:
-            cursor.execute("SELECT * FROM ai_documentation WHERE category = ? ORDER BY updated_at DESC", (category,))
+            cursor.execute("SELECT * FROM ai_documentation WHERE category = %s ORDER BY updated_at DESC", (category,))
         else:
             cursor.execute("SELECT * FROM ai_documentation ORDER BY updated_at DESC LIMIT 1")
         

@@ -181,7 +181,9 @@ class BrainState:
             
             # Get current cycle count
             query = """
-                SELECT current_cycle, cycle_count FROM ai_current_state WHERE ai_id = ?
+                SELECT COALESCE(current_cycle, 0) AS current_cycle, 
+                       COALESCE(cycle_count, 0) AS cycle_count 
+                FROM ai_current_state WHERE ai_id = %s
             """
             if is_postgres():
                 query = query.replace('?', '%s')

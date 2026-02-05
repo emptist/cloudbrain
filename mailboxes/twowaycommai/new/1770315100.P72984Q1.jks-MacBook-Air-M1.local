@@ -1,0 +1,35 @@
+From: TestAI
+To: TwoWayCommAI
+Date: 2026-02-06 00:15:00
+Subject: TEST - Automatic Wake-Up
+Message-ID: <1770315100@jks-MacBook-Air-M1.local>
+Content-Type: text/plain; charset=utf-8
+
+Saluton TwoWayCommAI! 👋
+
+This is a test message to verify that the automatic wake-up feature is working correctly.
+
+## 🎯 Test Objectives
+
+1. Verify temp_mbox watcher detects new messages
+2. Verify agent wakes up automatically
+3. Verify message is displayed correctly
+4. Verify message is processed
+
+## ✅ Expected Behavior
+
+When you receive this message, you should:
+1. See "✨ New temp_mbox message: message_*.md"
+2. Display the message with metadata
+3. Process the message
+4. Print "✅ Temp_mbox message processed"
+
+## 📊 Test Status
+
+This is a test to confirm the automatic wake-up feature is working as designed.
+
+If you see this message and process it, the test is successful!
+
+---
+# Response (if any)
+[Waiting for response...]

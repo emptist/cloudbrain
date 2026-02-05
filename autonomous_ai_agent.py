@@ -494,10 +494,11 @@ class AutonomousAIAgent:
         # Initialize brain state manager AFTER connection (when AI ID is known)
         self.brain_state = None
         
-        # Initialize temp_mbox watching
-        self.temp_mbox_path = Path("temp_mbox")
-        self.seen_temp_messages = set()
-        self.temp_mbox_task = None
+        # Initialize Maildir watching
+        self.maildir_base = Path("/Users/jk/gits/hub/cloudbrain/mailboxes")
+        self.ai_maildir = self.maildir_base / self.ai_name.lower().replace(' ', '').replace('-', '')
+        self.seen_maildir_messages = set()
+        self.maildir_task = None
     
     def _init_brain_state(self):
         """Initialize brain state manager"""
@@ -676,10 +677,10 @@ class AutonomousAIAgent:
         self.active = True
         self.stats["start_time"] = datetime.now()
         
-        # Start temp_mbox watcher in background
-        print("👀 Starting temp_mbox watcher...")
-        asyncio.create_task(self._watch_temp_mbox())
-        print("✅ Temp_mbox watcher started")
+        # Start Maildir watcher in background
+        print("👀 Starting Maildir watcher...")
+        asyncio.create_task(self._watch_maildir())
+        print("✅ Maildir watcher started")
         print()
         
         # Start collaboration loop
@@ -1731,113 +1732,132 @@ Kion vi pensas pri tio?
 
 *Kunhavigita de {self.ai_name}* 🚀"""
     
-    async def _watch_temp_mbox(self):
-        """Watch for new messages in temp_mbox directory"""
-        print(f"👀 Watching temp_mbox: {self.temp_mbox_path.absolute()}")
+    async def _watch_maildir(self):
+        """Watch for new messages in Maildir"""
+        print(f"👀 Watching Maildir: {self.ai_maildir.absolute()}")
         
         # Initialize with existing messages
-        self._scan_existing_temp_messages()
+        self._scan_existing_maildir_messages()
         
         while self.active:
             try:
-                if self.temp_mbox_path.exists():
-                    for msg_file in self.temp_mbox_path.glob("message_*.md"):
-                        if msg_file.name not in self.seen_temp_messages:
+                new_dir = self.ai_maildir / 'new'
+                if new_dir.exists():
+                    for msg_file in new_dir.glob("*"):
+                        if msg_file.is_file() and msg_file.name not in self.seen_maildir_messages:
                             # New message found!
-                            print(f"\n✨ New temp_mbox message: {msg_file.name}")
+                            print(f"\n✨ New Maildir message: {msg_file.name}")
                             
-                            metadata = self._parse_temp_mbox_message(msg_file)
-                            if metadata and self._is_temp_message_for_me(metadata):
+                            metadata = self._parse_maildir_message(msg_file)
+                            if metadata and self._is_maildir_message_for_me(metadata):
                                 # Display message
-                                self._display_temp_mbox_message(metadata)
+                                self._display_maildir_message(metadata)
                                 
                                 # Wake up and process!
-                                await self._process_temp_mbox_message(metadata)
+                                await self._process_maildir_message(metadata)
+                                
+                                # Move to cur/ (mark as read)
+                                cur_dir = self.ai_maildir / 'cur'
+                                cur_dir.mkdir(parents=True, exist_ok=True)
+                                cur_path = cur_dir / msg_file.name
+                                msg_file.rename(cur_path)
                             
-                            self.seen_temp_messages.add(msg_file.name)
+                            self.seen_maildir_messages.add(msg_file.name)
                 
                 # Wait before next check
                 await asyncio.sleep(5)
                 
             except Exception as e:
-                print(f"❌ Error watching temp_mbox: {e}")
+                print(f"❌ Error watching Maildir: {e}")
                 await asyncio.sleep(10)
     
-    def _scan_existing_temp_messages(self):
-        """Scan for existing temp_mbox messages on startup"""
+    def _scan_existing_maildir_messages(self):
+        """Scan for existing Maildir messages on startup"""
         try:
-            if self.temp_mbox_path.exists():
-                existing_messages = list(self.temp_mbox_path.glob("message_*.md"))
-                for msg_file in existing_messages:
-                    self.seen_temp_messages.add(msg_file.name)
-                print(f"📂 Scanned {len(existing_messages)} existing messages")
+            new_dir = self.ai_maildir / 'new'
+            cur_dir = self.ai_maildir / 'cur'
+            
+            existing_messages = []
+            if new_dir.exists():
+                existing_messages.extend(new_dir.glob("*"))
+            if cur_dir.exists():
+                existing_messages.extend(cur_dir.glob("*"))
+            
+            for msg_file in existing_messages:
+                if msg_file.is_file():
+                    self.seen_maildir_messages.add(msg_file.name)
+            print(f"📂 Scanned {len(existing_messages)} existing messages")
         except Exception as e:
             print(f"⚠️  Error scanning existing messages: {e}")
     
-    def _parse_temp_mbox_message(self, msg_file: Path) -> dict:
-        """Parse temp_mbox message file"""
+    def _parse_maildir_message(self, msg_file: Path) -> dict:
+        """Parse Maildir message file"""
         try:
             with open(msg_file, 'r') as f:
                 content = f.read()
             
-            # Parse metadata
+            # Parse headers
             metadata = {}
             lines = content.split('\n')
+            in_headers = True
+            
             for line in lines:
-                if line.startswith('# From:'):
-                    metadata['from'] = line.replace('# From:', '').strip()
-                elif line.startswith('# To:'):
-                    metadata['to'] = line.replace('# To:', '').strip()
-                elif line.startswith('# Date:'):
-                    metadata['date'] = line.replace('# Date:', '').strip()
-                elif line.startswith('# Topic:'):
-                    metadata['topic'] = line.replace('# Topic:', '').strip()
+                if in_headers:
+                    if line.startswith('From:'):
+                        metadata['from'] = line.replace('From:', '').strip()
+                    elif line.startswith('To:'):
+                        metadata['to'] = line.replace('To:', '').strip()
+                    elif line.startswith('Date:'):
+                        metadata['date'] = line.replace('Date:', '').strip()
+                    elif line.startswith('Subject:'):
+                        metadata['topic'] = line.replace('Subject:', '').strip()
+                    elif line.strip() == '':
+                        in_headers = False
+                else:
+                    # Body content
+                    if 'body' not in metadata:
+                        metadata['body'] = ''
+                    metadata['body'] += line + '\n'
             
             metadata['file'] = msg_file.name
             metadata['path'] = str(msg_file)
             
-            # Extract body
-            body_start = 0
-            for i, line in enumerate(lines):
-                if line.startswith('# ') and i > 0:
-                    body_start = i + 1
-                    break
-            
-            metadata['body'] = '\n'.join(lines[body_start:])
+            if 'body' in metadata:
+                metadata['body'] = metadata['body'].strip()
             
             return metadata
         except Exception as e:
             print(f"❌ Error parsing {msg_file.name}: {e}")
             return None
     
-    def _is_temp_message_for_me(self, metadata: dict) -> bool:
-        """Check if temp_mbox message is for this AI"""
+    def _is_maildir_message_for_me(self, metadata: dict) -> bool:
+        """Check if Maildir message is for this AI"""
         if not metadata:
             return False
         
         to_ai = metadata.get('to', '').lower()
         return self.ai_name.lower() in to_ai
     
-    def _display_temp_mbox_message(self, metadata: dict):
-        """Display temp_mbox message"""
+    def _display_maildir_message(self, metadata: dict):
+        """Display Maildir message"""
         print("\n" + "=" * 70)
-        print(f"📬 TEMP_MBOX MESSAGE FOR {self.ai_name.upper()}")
+        print(f"📬 MAILDIR MESSAGE FOR {self.ai_name.upper()}")
         print("=" * 70)
         print(f"👤 From:    {metadata.get('from', 'Unknown')}")
         print(f"📅 Date:    {metadata.get('date', 'Unknown')}")
-        print(f"📋 Topic:   {metadata.get('topic', 'No topic')}")
+        print(f"📋 Subject: {metadata.get('topic', 'No subject')}")
         print(f"📁 File:    {metadata.get('file', 'Unknown')}")
         print("=" * 70)
         print(metadata.get('body', ''))
         print("=" * 70)
         print()
     
-    async def _process_temp_mbox_message(self, metadata: dict):
-        """Process temp_mbox message - wake up and respond"""
+    async def _process_maildir_message(self, metadata: dict):
+        """Process Maildir message - wake up and respond"""
         if not metadata:
             return
         
-        print(f"🔄 Processing temp_mbox message from {metadata.get('from', 'Unknown')}...")
+        print(f"🔄 Processing Maildir message from {metadata.get('from', 'Unknown')}...")
         
         # Extract topic and content
         topic = metadata.get('topic', '')
@@ -1850,18 +1870,21 @@ Kion vi pensas pri tio?
         elif 'API DESIGN' in topic:
             # API design discussion
             await self._handle_api_design_message(metadata)
+        elif 'Migration' in topic:
+            # Migration-related message
+            await self._handle_migration_message(metadata)
         else:
             # General message
-            await self._handle_general_temp_message(metadata)
+            await self._handle_general_maildir_message(metadata)
         
-        print(f"✅ Temp_mbox message processed")
+        print(f"✅ Maildir message processed")
     
     async def _handle_collaboration_message(self, metadata: dict):
         """Handle collaboration message from another AI"""
         print(f"🤝 Collaboration message received from {metadata.get('from', 'Unknown')}")
         
         # Process collaboration proposal, plan updates, etc.
-        # Send response via temp_mbox if needed
+        # Send response via Maildir if needed
         
         # For now, just acknowledge
         print(f"   💭 Collaboration message acknowledged")
@@ -1871,17 +1894,27 @@ Kion vi pensas pri tio?
         print(f"🎨 API design message received from {metadata.get('from', 'Unknown')}")
         
         # Process API design discussion
-        # Send response via temp_mbox if needed
+        # Send response via Maildir if needed
         
         # For now, just acknowledge
         print(f"   💭 API design message acknowledged")
     
-    async def _handle_general_temp_message(self, metadata: dict):
+    async def _handle_migration_message(self, metadata: dict):
+        """Handle migration message from another AI"""
+        print(f"🚀 Migration message received from {metadata.get('from', 'Unknown')}")
+        
+        # Process migration-related message
+        # Send response via Maildir if needed
+        
+        # For now, just acknowledge
+        print(f"   💭 Migration message acknowledged")
+    
+    async def _handle_general_maildir_message(self, metadata: dict):
         """Handle general message from another AI"""
         print(f"💬 General message received from {metadata.get('from', 'Unknown')}")
         
         # Process general message
-        # Send response via temp_mbox if needed
+        # Send response via Maildir if needed
         
         # For now, just acknowledge
         print(f"   💭 General message acknowledged")

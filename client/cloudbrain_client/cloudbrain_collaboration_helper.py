@@ -454,6 +454,7 @@ class CloudBrainCollaborationHelper:
             await self.client.connect(start_message_loop=False)
             self.connected = True
             self.ai_name = self.client.ai_name
+            self.ai_id = self.client.ai_id  # Update AI ID from server response
             print(f"✅ Connected to CloudBrain as {self.ai_name} (AI {self.ai_id})")
             
             # Start message loop in background

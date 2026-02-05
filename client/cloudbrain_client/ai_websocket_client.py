@@ -35,9 +35,10 @@ class AIWebSocketClient:
             print(f"🔗 Connecting to {self.server_url}...")
             self.ws = await websockets.connect(self.server_url)
             
-            # Authenticate - libsql simulator expects just ai_id
+            # Authenticate - send ai_id and ai_name for auto-assignment
             auth_msg = {
-                'ai_id': self.ai_id
+                'ai_id': self.ai_id,
+                'ai_name': self.ai_name
             }
             await self.ws.send(json.dumps(auth_msg))
             

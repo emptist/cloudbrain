@@ -314,14 +314,16 @@ class CloudBrainServer:
                     details=f"Token: {validation_result['token_prefix']}"
                 )
             else:
-                # No token provided - allow connection but log as unauthenticated
-                print(f"⚠️  No authentication token provided for AI {ai_id}")
-                self.token_manager.log_authentication(
-                    ai_id=ai_id,
-                    project=project_name,
-                    success=False,
-                    details="No token provided"
-                )
+                # No token provided - allow connection (AI 999 may not have token yet)
+                # Skip logging for AI 999 since profile may not exist yet
+                if ai_id != 999:
+                    print(f"⚠️  No authentication token provided for AI {ai_id}")
+                    self.token_manager.log_authentication(
+                        ai_id=ai_id,
+                        project=project_name,
+                        success=False,
+                        details="No token provided"
+                    )
             
             conn = get_db_connection()
             cursor = get_cursor()

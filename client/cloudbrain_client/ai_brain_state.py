@@ -32,7 +32,7 @@ Example:
 import json
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from .db_config import get_db_connection, is_postgres
 
 
@@ -435,6 +435,238 @@ class BrainState:
         except Exception as e:
             print(f"❌ Error updating activity: {e}")
             return False
+    
+    def search_documentation(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Search documentation database for relevant information
+        
+        This helps AIs find answers to questions by searching the knowledge base.
+        
+        Args:
+            query: Search query (text to search for)
+            limit: Maximum number of results to return (default: 5)
+        
+        Returns:
+            List of documentation entries with title, content, category, and relevance score
+        
+        Example:
+            results = brain.search_documentation("how to connect to server")
+            for doc in results:
+                print(f"Found: {doc['title']}")
+                print(f"Relevance: {doc['rank']}")
+                print(f"Content: {doc['content'][:200]}...")
+        """
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            query_sql = """
+                SELECT id, title, content, category, tags, language, 
+                       created_at, updated_at, created_by, is_active, view_count
+                FROM ai_documentation
+                WHERE is_active = TRUE
+                  AND to_tsvector('english', content) @@ plainto_tsquery('english', %s)
+                ORDER BY ts_rank(to_tsvector('english', content), plainto_tsquery('english', %s)) DESC, updated_at DESC
+                LIMIT %s
+            """
+            
+            from .db_config import CursorWrapper
+            wrapped_cursor = CursorWrapper(cursor)
+            wrapped_cursor.execute(query_sql, (query, query, limit))
+            
+            results = wrapped_cursor.fetchall()
+            
+            # Increment view counts
+            for result in results:
+                cursor.execute(
+                    "UPDATE ai_documentation SET view_count = view_count + 1 WHERE id = %s",
+                    (result['id'],)
+                )
+            
+            conn.commit()
+            conn.close()
+            
+            print(f"📚 Found {len(results)} documentation entries for: {query}")
+            return results
+            
+        except Exception as e:
+            print(f"❌ Error searching documentation: {e}")
+            return []
+    
+    def get_documentation_by_category(self, category: str) -> List[Dict[str, Any]]:
+        """
+        Get all documentation in a specific category
+        
+        Args:
+            category: Category name (e.g., 'server', 'client', 'database')
+        
+        Returns:
+            List of documentation entries in that category
+        
+        Example:
+            server_docs = brain.get_documentation_by_category('server')
+            for doc in server_docs:
+                print(f"📄 {doc['title']}")
+        """
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            query_sql = """
+                SELECT id, title, content, category, tags, language,
+                       created_at, updated_at, created_by, is_active, view_count
+                FROM ai_documentation
+                WHERE category = %s AND is_active = TRUE
+                ORDER BY title ASC
+            """
+            
+            from .db_config import CursorWrapper
+            wrapped_cursor = CursorWrapper(cursor)
+            wrapped_cursor.execute(query_sql, (category,))
+            
+            results = wrapped_cursor.fetchall()
+            conn.close()
+            
+            print(f"📚 Found {len(results)} documents in category: {category}")
+            return results
+            
+        except Exception as e:
+            print(f"❌ Error getting documentation by category: {e}")
+            return []
+    
+    def get_documentation(self, title: str, category: str = None) -> Optional[Dict[str, Any]]:
+        """
+        Get specific documentation by title (and optionally category)
+        
+        Args:
+            title: Documentation title
+            category: Optional category to narrow down search
+        
+        Returns:
+            Documentation entry or None if not found
+        
+        Example:
+            doc = brain.get_documentation("CloudBrain Server", "server")
+            if doc:
+                print(doc['content'])
+        """
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            if category:
+                query_sql = """
+                    SELECT id, title, content, category, tags, language,
+                           created_at, updated_at, created_by, is_active, view_count
+                    FROM ai_documentation
+                    WHERE title = %s AND category = %s AND is_active = TRUE
+                """
+                params = (title, category)
+            else:
+                query_sql = """
+                    SELECT id, title, content, category, tags, language,
+                           created_at, updated_at, created_by, is_active, view_count
+                    FROM ai_documentation
+                    WHERE title = %s AND is_active = TRUE
+                """
+                params = (title,)
+            
+            from .db_config import CursorWrapper
+            wrapped_cursor = CursorWrapper(cursor)
+            wrapped_cursor.execute(query_sql, params)
+            
+            result = wrapped_cursor.fetchone()
+            
+            # Increment view count
+            if result:
+                cursor.execute(
+                    "UPDATE ai_documentation SET view_count = view_count + 1 WHERE id = %s",
+                    (result['id'],)
+                )
+                conn.commit()
+            
+            conn.close()
+            
+            if result:
+                print(f"📚 Retrieved: {result['title']}")
+            else:
+                print(f"❌ Documentation not found: {title}")
+            
+            return result
+            
+        except Exception as e:
+            print(f"❌ Error getting documentation: {e}")
+            return None
+    
+    def get_documentation_summary(self) -> Dict[str, Any]:
+        """
+        Get a summary of available documentation
+        
+        Returns:
+            Dictionary with documentation statistics and categories
+        
+        Example:
+            summary = brain.get_documentation_summary()
+            print(f"Total documents: {summary['total']}")
+            print(f"Categories: {summary['categories']}")
+        """
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            from .db_config import CursorWrapper
+            wrapped_cursor = CursorWrapper(cursor)
+            
+            # Get total count
+            cursor.execute("SELECT COUNT(*) as total FROM ai_documentation WHERE is_active = TRUE")
+            total_result = wrapped_cursor.fetchone()
+            total = total_result['total'] if total_result else 0
+            
+            # Get categories
+            cursor.execute("""
+                SELECT category, COUNT(*) as count 
+                FROM ai_documentation 
+                WHERE is_active = TRUE 
+                GROUP BY category 
+                ORDER BY count DESC
+            """)
+            categories = wrapped_cursor.fetchall()
+            
+            # Get most viewed
+            cursor.execute("""
+                SELECT title, category, view_count 
+                FROM ai_documentation 
+                WHERE is_active = TRUE 
+                ORDER BY view_count DESC 
+                LIMIT 5
+            """)
+            most_viewed = wrapped_cursor.fetchall()
+            
+            # Get recently updated
+            cursor.execute("""
+                SELECT title, category, updated_at 
+                FROM ai_documentation 
+                WHERE is_active = TRUE 
+                ORDER BY updated_at DESC 
+                LIMIT 5
+            """)
+            recent = wrapped_cursor.fetchall()
+            
+            conn.close()
+            
+            summary = {
+                'total': total,
+                'categories': {cat['category']: cat['count'] for cat in categories},
+                'most_viewed': most_viewed,
+                'recent': recent
+            }
+            
+            print(f"📚 Documentation summary: {total} documents across {len(categories)} categories")
+            return summary
+            
+        except Exception as e:
+            print(f"❌ Error getting documentation summary: {e}")
+            return {'total': 0, 'categories': {}, 'most_viewed': [], 'recent': []}
 
 
 def ai_help():

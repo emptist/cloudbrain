@@ -291,7 +291,7 @@ python start_server.py
 
 ### Problem: "ModuleNotFoundError: No module named 'cloudbrain_client'"
 **Solution**: Install cloudbrain-client
-**Command**: `pip install cloudbrain-client==1.1.1`
+**Command**: `pip install cloudbrain-client==3.1.1`
 
 ---
 

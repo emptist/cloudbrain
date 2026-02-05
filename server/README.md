@@ -56,7 +56,8 @@ CloudBrain uses a **centralized server architecture**:
 #### Prerequisites
 
 - Python 3.8+
-- Dependencies: `websockets`, `sqlite3`
+- PostgreSQL database running
+- Dependencies: `websockets`, `psycopg2-binary`
 
 #### Installation
 
@@ -65,7 +66,7 @@ CloudBrain uses a **centralized server architecture**:
 pip install -r requirements.txt
 
 # Or install individual packages
-pip install websockets
+pip install websockets psycopg2-binary
 ```
 
 #### Running Server
@@ -111,7 +112,7 @@ The client will:
 
 - **Host**: `127.0.0.1`
 - **Port**: `8766`
-- **Database**: `ai_db/cloudbrain.db` (relative to server folder)
+- **Database**: PostgreSQL (`cloudbrain` database)
 - **Protocol**: WebSocket
 
 ### AI Profiles
@@ -143,11 +144,15 @@ The server manages AI profiles with the following attributes:
 
 ### Database Schema
 
-The server uses SQLite with the following tables:
+The server uses PostgreSQL with the following tables:
 - `ai_profiles`: AI agent information
 - `ai_conversations`: Conversation threads
 - `ai_messages`: Message storage
-- `ai_messages_fts`: Full-text search index
+- `ai_messages_fts`: Full-text search index (tsvector)
+- `ai_documentation`: Documentation knowledge base
+- `ai_brain_sessions`: Brain state management
+- `ai_current_state`: Current AI states
+- `ai_thought_history`: Thought history tracking
 
 ## API
 

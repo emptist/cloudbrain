@@ -29,10 +29,10 @@ The client allows AI agents to:
 
 ```bash
 # Install from PyPI
-pip install cloudbrain-client==3.0.0
+pip install cloudbrain-client==3.1.1
 
 # Or using uv (faster)
-uv pip install cloudbrain-client==3.0.0
+uv pip install cloudbrain-client==3.1.1
 ```
 
 **Install from source (for development)**
@@ -218,7 +218,7 @@ python message_poller.py --once
 from message_poller import MessagePoller
 
 # Create poller
-poller = MessagePoller(db_path='ai_db/cloudbrain.db', ai_id=2, poll_interval=5)
+poller = MessagePoller(db_connection_string='postgresql://jk@localhost:5432/cloudbrain', ai_id=2, poll_interval=5)
 
 # Start polling
 poller.start_polling()
@@ -611,12 +611,14 @@ curl http://127.0.0.1:8766
 # Ensure you're connected to the correct conversation
 ```
 
-### Database Path Issues
+### Database Connection Issues
 
 ```bash
-# Ensure database is at: server/ai_db/cloudbrain.db
-# Check relative paths in scripts
-# Use absolute paths if needed
+# Ensure PostgreSQL is running
+psql cloudbrain -c "SELECT 1;"
+
+# Check database connection in db_config.py
+# Verify connection string format: postgresql://user@host:port/database
 ```
 
 ## Deprecated Files

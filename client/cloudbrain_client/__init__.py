@@ -28,7 +28,7 @@ from .cloudbrain_collaboration_helper import CloudBrainCollaborationHelper, Clou
 from .ai_websocket_client import AIWebSocketClient
 from .ai_brain_state import BrainState
 
-__version__ = "3.0.0"
+__version__ = "3.1.1"
 __all__ = [
     "CloudBrainCollaborationHelper",
     "CloudBrainCollaborator",

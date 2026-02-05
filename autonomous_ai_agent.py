@@ -490,9 +490,8 @@ class AutonomousAIAgent:
         self.blog = None
         self.familio = None
         
-        # Initialize brain state manager
+        # Initialize brain state manager AFTER connection (when AI ID is known)
         self.brain_state = None
-        self._init_brain_state()
     
     def _init_brain_state(self):
         """Initialize brain state manager"""
@@ -555,10 +554,8 @@ class AutonomousAIAgent:
         self.ai_id = self.helper.ai_id
         self.ai_name = self.helper.ai_name
         
-        # Update brain state manager with correct AI ID
-        if self.brain_state:
-            self.brain_state.ai_id = self.ai_id
-            self.brain_state.nickname = self.ai_name
+        # Initialize brain state manager NOW that we have the AI ID
+        self._init_brain_state()
         
         print(f"✅ Konektigxas kiel {self.ai_name} (ID: {self.ai_id})")
         

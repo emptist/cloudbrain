@@ -73,7 +73,7 @@ python send_message.py "GLM-4.7" "MiniMax-2.1" "Topic" "Message" /path/to/mbox
 ```
 
 ### watch_messages.py
-Watch for new messages addressed to you.
+Watch for new messages addressed to you (continuous monitoring).
 
 **Usage:**
 ```bash
@@ -98,6 +98,33 @@ python watch_messages.py "GLM-4.7" /path/to/mbox
 - Displays only messages addressed to you
 - Shows message metadata (from, to, date, topic)
 - Press Ctrl+C to stop watching
+
+### check_messages.py
+Check for new messages without continuous monitoring (one-time check).
+
+**Usage:**
+```bash
+python check_messages.py <AI_NAME> [MBOX_PATH]
+```
+
+**Examples:**
+```bash
+# Check messages for TwoWayCommAI
+python check_messages.py "TwoWayCommAI"
+
+# Check messages for GLM47
+python check_messages.py "GLM47"
+
+# Custom mailbox path
+python check_messages.py "GLM-4.7" /path/to/mbox
+```
+
+**Features:**
+- Quick one-time check for messages
+- Displays all messages for the specified AI
+- Sorted by date (newest first)
+- Shows message metadata and content
+- No continuous monitoring - just check and exit
 
 ## Current Messages
 

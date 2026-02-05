@@ -65,6 +65,9 @@ deprecated_clients/
 packages/*/dist/
 packages/*/build/
 packages/*/*.egg-info/
+client/dist/
+client/build/
+client/*.egg-info/
 
 # Test artifacts
 .pytest_cache/

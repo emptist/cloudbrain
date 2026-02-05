@@ -493,6 +493,11 @@ class AutonomousAIAgent:
         
         # Initialize brain state manager AFTER connection (when AI ID is known)
         self.brain_state = None
+        
+        # Initialize temp_mbox watching
+        self.temp_mbox_path = Path("temp_mbox")
+        self.seen_temp_messages = set()
+        self.temp_mbox_task = None
     
     def _init_brain_state(self):
         """Initialize brain state manager"""
@@ -665,6 +670,12 @@ class AutonomousAIAgent:
         
         self.active = True
         self.stats["start_time"] = datetime.now()
+        
+        # Start temp_mbox watcher in background
+        print("👀 Starting temp_mbox watcher...")
+        asyncio.create_task(self._watch_temp_mbox())
+        print("✅ Temp_mbox watcher started")
+        print()
         
         # Start collaboration loop
         await self._collaboration_loop()
@@ -1714,6 +1725,161 @@ Kion vi pensas pri tio?
 ---
 
 *Kunhavigita de {self.ai_name}* 🚀"""
+    
+    async def _watch_temp_mbox(self):
+        """Watch for new messages in temp_mbox directory"""
+        print(f"👀 Watching temp_mbox: {self.temp_mbox_path.absolute()}")
+        
+        # Initialize with existing messages
+        self._scan_existing_temp_messages()
+        
+        while self.active:
+            try:
+                if self.temp_mbox_path.exists():
+                    for msg_file in self.temp_mbox_path.glob("message_*.md"):
+                        if msg_file.name not in self.seen_temp_messages:
+                            # New message found!
+                            print(f"\n✨ New temp_mbox message: {msg_file.name}")
+                            
+                            metadata = self._parse_temp_mbox_message(msg_file)
+                            if metadata and self._is_temp_message_for_me(metadata):
+                                # Display message
+                                self._display_temp_mbox_message(metadata)
+                                
+                                # Wake up and process!
+                                await self._process_temp_mbox_message(metadata)
+                            
+                            self.seen_temp_messages.add(msg_file.name)
+                
+                # Wait before next check
+                await asyncio.sleep(5)
+                
+            except Exception as e:
+                print(f"❌ Error watching temp_mbox: {e}")
+                await asyncio.sleep(10)
+    
+    def _scan_existing_temp_messages(self):
+        """Scan for existing temp_mbox messages on startup"""
+        try:
+            if self.temp_mbox_path.exists():
+                existing_messages = list(self.temp_mbox_path.glob("message_*.md"))
+                for msg_file in existing_messages:
+                    self.seen_temp_messages.add(msg_file.name)
+                print(f"📂 Scanned {len(existing_messages)} existing messages")
+        except Exception as e:
+            print(f"⚠️  Error scanning existing messages: {e}")
+    
+    def _parse_temp_mbox_message(self, msg_file: Path) -> dict:
+        """Parse temp_mbox message file"""
+        try:
+            with open(msg_file, 'r') as f:
+                content = f.read()
+            
+            # Parse metadata
+            metadata = {}
+            lines = content.split('\n')
+            for line in lines:
+                if line.startswith('# From:'):
+                    metadata['from'] = line.replace('# From:', '').strip()
+                elif line.startswith('# To:'):
+                    metadata['to'] = line.replace('# To:', '').strip()
+                elif line.startswith('# Date:'):
+                    metadata['date'] = line.replace('# Date:', '').strip()
+                elif line.startswith('# Topic:'):
+                    metadata['topic'] = line.replace('# Topic:', '').strip()
+            
+            metadata['file'] = msg_file.name
+            metadata['path'] = str(msg_file)
+            
+            # Extract body
+            body_start = 0
+            for i, line in enumerate(lines):
+                if line.startswith('# ') and i > 0:
+                    body_start = i + 1
+                    break
+            
+            metadata['body'] = '\n'.join(lines[body_start:])
+            
+            return metadata
+        except Exception as e:
+            print(f"❌ Error parsing {msg_file.name}: {e}")
+            return None
+    
+    def _is_temp_message_for_me(self, metadata: dict) -> bool:
+        """Check if temp_mbox message is for this AI"""
+        if not metadata:
+            return False
+        
+        to_ai = metadata.get('to', '').lower()
+        return self.ai_name.lower() in to_ai
+    
+    def _display_temp_mbox_message(self, metadata: dict):
+        """Display temp_mbox message"""
+        print("\n" + "=" * 70)
+        print(f"📬 TEMP_MBOX MESSAGE FOR {self.ai_name.upper()}")
+        print("=" * 70)
+        print(f"👤 From:    {metadata.get('from', 'Unknown')}")
+        print(f"📅 Date:    {metadata.get('date', 'Unknown')}")
+        print(f"📋 Topic:   {metadata.get('topic', 'No topic')}")
+        print(f"📁 File:    {metadata.get('file', 'Unknown')}")
+        print("=" * 70)
+        print(metadata.get('body', ''))
+        print("=" * 70)
+        print()
+    
+    async def _process_temp_mbox_message(self, metadata: dict):
+        """Process temp_mbox message - wake up and respond"""
+        if not metadata:
+            return
+        
+        print(f"🔄 Processing temp_mbox message from {metadata.get('from', 'Unknown')}...")
+        
+        # Extract topic and content
+        topic = metadata.get('topic', '')
+        content = metadata.get('body', '')
+        
+        # Process based on topic
+        if 'COLLABORATION' in topic:
+            # Collaboration-related message
+            await self._handle_collaboration_message(metadata)
+        elif 'API DESIGN' in topic:
+            # API design discussion
+            await self._handle_api_design_message(metadata)
+        else:
+            # General message
+            await self._handle_general_temp_message(metadata)
+        
+        print(f"✅ Temp_mbox message processed")
+    
+    async def _handle_collaboration_message(self, metadata: dict):
+        """Handle collaboration message from another AI"""
+        print(f"🤝 Collaboration message received from {metadata.get('from', 'Unknown')}")
+        
+        # Process collaboration proposal, plan updates, etc.
+        # Send response via temp_mbox if needed
+        
+        # For now, just acknowledge
+        print(f"   💭 Collaboration message acknowledged")
+    
+    async def _handle_api_design_message(self, metadata: dict):
+        """Handle API design discussion message"""
+        print(f"🎨 API design message received from {metadata.get('from', 'Unknown')}")
+        
+        # Process API design discussion
+        # Send response via temp_mbox if needed
+        
+        # For now, just acknowledge
+        print(f"   💭 API design message acknowledged")
+    
+    async def _handle_general_temp_message(self, metadata: dict):
+        """Handle general message from another AI"""
+        print(f"💬 General message received from {metadata.get('from', 'Unknown')}")
+        
+        # Process general message
+        # Send response via temp_mbox if needed
+        
+        # For now, just acknowledge
+        print(f"   💭 General message acknowledged")
 
 
 async def main():

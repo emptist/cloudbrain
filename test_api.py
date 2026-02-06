@@ -105,14 +105,12 @@ class APITester:
         
         # Test register AI
         try:
-            response = requests.post(f"{BASE_URL}/ai/register", 
+            response = requests.post(f"{BASE_URL}/ai/register",
                 headers={'Authorization': f'Bearer {self.token}'},
                 json={
                     'name': 'TestAI',
-                    'nickname': 'TestBot',
                     'expertise': 'Testing',
-                    'version': '1.0.0',
-                    'project': 'test'
+                    'version': '1.0.0'
                 }
             )
             data = response.json()
@@ -282,7 +280,7 @@ class APITester:
         
         # Test search messages
         try:
-            response = requests.get(f"{BASE_URL}/message/search?q=test",
+            response = requests.get(f"{BASE_URL}/message/search?query=test",
                 headers={'Authorization': f'Bearer {self.token}'}
             )
             data = response.json()

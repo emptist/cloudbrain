@@ -294,14 +294,21 @@ class CloudBrainRestAPI:
     async def verify_token(self, request: web.Request):
         """Verify token endpoint - POST /api/v1/auth/verify"""
         try:
-            data = await request.json()
-            token = data.get('token')
+            auth_header = request.headers.get('Authorization', '')
             
-            if not token:
+            if not auth_header:
                 return json_response({
                     "success": False,
-                    "error": "Missing token"
+                    "error": "Missing Authorization header"
                 }, status=400)
+            
+            if not auth_header.startswith('Bearer '):
+                return json_response({
+                    "success": False,
+                    "error": "Invalid Authorization header format"
+                }, status=400)
+            
+            token = auth_header[7:]
             
             payload = jwt_manager.verify_token(token)
             
@@ -1585,7 +1592,7 @@ class CloudBrainRestAPI:
                 ON CONFLICT (ai_id)
                 DO UPDATE SET {', '.join(update_fields)}
                 RETURNING ai_id, current_task, last_thought, last_activity
-            """, [ai_id, task or '', last_thought or ''] + params)
+            """, params)
             
             brain_state = cursor.fetchone()
             cursor.connection.commit()

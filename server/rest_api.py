@@ -161,6 +161,20 @@ class CloudBrainRestAPI:
         self.app.router.add_post('/api/v1/collaboration/respond', self.respond_collaboration)
         self.app.router.add_get('/api/v1/collaboration/{id}/progress', self.get_collaboration_progress)
         self.app.router.add_post('/api/v1/collaboration/{id}/complete', self.complete_collaboration)
+        
+        # Project Management APIs
+        self.app.router.add_post('/api/v1/project/create', self.create_project)
+        self.app.router.add_get('/api/v1/project/{id}', self.get_project)
+        self.app.router.add_put('/api/v1/project/{id}', self.update_project)
+        self.app.router.add_delete('/api/v1/project/{id}', self.delete_project)
+        self.app.router.add_get('/api/v1/project/list', self.list_projects)
+        self.app.router.add_post('/api/v1/project/{id}/member', self.add_project_member)
+        self.app.router.add_delete('/api/v1/project/{id}/member', self.remove_project_member)
+        
+        # Brain State APIs
+        self.app.router.add_get('/api/v1/brain/state', self.get_brain_state)
+        self.app.router.add_put('/api/v1/brain/state', self.update_brain_state)
+        self.app.router.add_delete('/api/v1/brain/state', self.clear_brain_state)
     
     # ==================== Authentication APIs ====================
     
@@ -1103,6 +1117,518 @@ class CloudBrainRestAPI:
             return json_response({
                 "success": False,
                 "error": "Failed to complete collaboration"
+            }, status=500)
+    
+    # ==================== Project Management APIs ====================
+    
+    async def create_project(self, request: web.Request):
+        """Create project endpoint - POST /api/v1/project/create"""
+        try:
+            ai_id = request.get('ai_id')
+            data = await request.json()
+            name = data.get('name')
+            description = data.get('description', '')
+            
+            if not name:
+                return json_response({
+                    "success": False,
+                    "error": "Missing required field: name"
+                }, status=400)
+            
+            cursor = get_cursor()
+            cursor.execute("""
+                INSERT INTO projects (name, description, created_by)
+                VALUES (%s, %s, %s)
+                RETURNING id, name, description, created_by, created_at
+            """, (name, description, ai_id))
+            
+            project = cursor.fetchone()
+            
+            cursor.execute("""
+                INSERT INTO project_members (project_id, ai_id, role)
+                VALUES (%s, %s, 'owner')
+            """, (project['id'], ai_id))
+            
+            cursor.connection.commit()
+            
+            logger.info(f"Created project: {project['id']} by AI {ai_id}")
+            
+            return json_response({
+                "success": True,
+                "project": project
+            })
+            
+        except Exception as e:
+            logger.error(f"Create project error: {e}")
+            return json_response({
+                "success": False,
+                "error": "Failed to create project"
+            }, status=500)
+    
+    async def get_project(self, request: web.Request):
+        """Get project endpoint - GET /api/v1/project/{id}"""
+        try:
+            project_id = request.match_info['id']
+            
+            cursor = get_cursor()
+            cursor.execute("""
+                SELECT p.id, p.name, p.description, p.created_by, p.created_at, p.updated_at, p.is_active,
+                       ap.name as created_by_name
+                FROM projects p
+                LEFT JOIN ai_profiles ap ON p.created_by = ap.id
+                WHERE p.id = %s AND p.is_active = TRUE
+            """, (project_id,))
+            
+            project = cursor.fetchone()
+            
+            if not project:
+                return json_response({
+                    "success": False,
+                    "error": "Project not found"
+                }, status=404)
+            
+            cursor.execute("""
+                SELECT pm.ai_id, ap.name, ap.nickname, pm.role, pm.joined_at
+                FROM project_members pm
+                JOIN ai_profiles ap ON pm.ai_id = ap.id
+                WHERE pm.project_id = %s
+                ORDER BY pm.joined_at
+            """, (project_id,))
+            
+            members = cursor.fetchall()
+            
+            project['members'] = members
+            
+            return json_response({
+                "success": True,
+                "project": project
+            })
+            
+        except Exception as e:
+            logger.error(f"Get project error: {e}")
+            return json_response({
+                "success": False,
+                "error": "Failed to get project"
+            }, status=500)
+    
+    async def update_project(self, request: web.Request):
+        """Update project endpoint - PUT /api/v1/project/{id}"""
+        try:
+            project_id = request.match_info['id']
+            ai_id = request.get('ai_id')
+            data = await request.json()
+            
+            cursor = get_cursor()
+            cursor.execute("""
+                SELECT id, created_by
+                FROM projects
+                WHERE id = %s AND is_active = TRUE
+            """, (project_id,))
+            
+            project = cursor.fetchone()
+            
+            if not project:
+                return json_response({
+                    "success": False,
+                    "error": "Project not found"
+                }, status=404)
+            
+            if project['created_by'] != ai_id:
+                cursor.execute("""
+                    SELECT role FROM project_members
+                    WHERE project_id = %s AND ai_id = %s
+                """, (project_id, ai_id))
+                
+                member = cursor.fetchone()
+                if not member or member['role'] not in ['owner', 'admin']:
+                    return json_response({
+                        "success": False,
+                        "error": "You don't have permission to update this project"
+                    }, status=403)
+            
+            update_fields = []
+            params = []
+            
+            if 'name' in data:
+                update_fields.append("name = %s")
+                params.append(data['name'])
+            
+            if 'description' in data:
+                update_fields.append("description = %s")
+                params.append(data['description'])
+            
+            if not update_fields:
+                return json_response({
+                    "success": False,
+                    "error": "No fields to update"
+                }, status=400)
+            
+            params.append(project_id)
+            
+            cursor.execute(f"""
+                UPDATE projects
+                SET {', '.join(update_fields)}
+                WHERE id = %s
+                RETURNING id, name, description, updated_at
+            """, params)
+            
+            updated_project = cursor.fetchone()
+            cursor.connection.commit()
+            
+            logger.info(f"Updated project: {project_id} by AI {ai_id}")
+            
+            return json_response({
+                "success": True,
+                "project": updated_project
+            })
+            
+        except Exception as e:
+            logger.error(f"Update project error: {e}")
+            return json_response({
+                "success": False,
+                "error": "Failed to update project"
+            }, status=500)
+    
+    async def delete_project(self, request: web.Request):
+        """Delete project endpoint - DELETE /api/v1/project/{id}"""
+        try:
+            project_id = request.match_info['id']
+            ai_id = request.get('ai_id')
+            
+            cursor = get_cursor()
+            cursor.execute("""
+                SELECT id, created_by
+                FROM projects
+                WHERE id = %s AND is_active = TRUE
+            """, (project_id,))
+            
+            project = cursor.fetchone()
+            
+            if not project:
+                return json_response({
+                    "success": False,
+                    "error": "Project not found"
+                }, status=404)
+            
+            if project['created_by'] != ai_id:
+                cursor.execute("""
+                    SELECT role FROM project_members
+                    WHERE project_id = %s AND ai_id = %s
+                """, (project_id, ai_id))
+                
+                member = cursor.fetchone()
+                if not member or member['role'] != 'owner':
+                    return json_response({
+                        "success": False,
+                        "error": "You don't have permission to delete this project"
+                    }, status=403)
+            
+            cursor.execute("""
+                UPDATE projects
+                SET is_active = FALSE
+                WHERE id = %s
+            """, (project_id,))
+            
+            cursor.connection.commit()
+            
+            logger.info(f"Deleted project: {project_id} by AI {ai_id}")
+            
+            return json_response({
+                "success": True,
+                "message": "Project deleted successfully"
+            })
+            
+        except Exception as e:
+            logger.error(f"Delete project error: {e}")
+            return json_response({
+                "success": False,
+                "error": "Failed to delete project"
+            }, status=500)
+    
+    async def list_projects(self, request: web.Request):
+        """List projects endpoint - GET /api/v1/project/list"""
+        try:
+            ai_id = request.get('ai_id')
+            
+            cursor = get_cursor()
+            cursor.execute("""
+                SELECT DISTINCT p.id, p.name, p.description, p.created_by, p.created_at, p.updated_at,
+                       ap.name as created_by_name,
+                       CASE WHEN p.created_by = %s THEN TRUE ELSE FALSE END as is_owner
+                FROM projects p
+                LEFT JOIN ai_profiles ap ON p.created_by = ap.id
+                LEFT JOIN project_members pm ON p.id = pm.project_id
+                WHERE p.is_active = TRUE AND (p.created_by = %s OR pm.ai_id = %s)
+                ORDER BY p.created_at DESC
+            """, (ai_id, ai_id, ai_id))
+            
+            projects = cursor.fetchall()
+            
+            return json_response({
+                "success": True,
+                "projects": projects
+            })
+            
+        except Exception as e:
+            logger.error(f"List projects error: {e}")
+            return json_response({
+                "success": False,
+                "error": "Failed to list projects"
+            }, status=500)
+    
+    async def add_project_member(self, request: web.Request):
+        """Add project member endpoint - POST /api/v1/project/{id}/member"""
+        try:
+            project_id = request.match_info['id']
+            ai_id = request.get('ai_id')
+            data = await request.json()
+            member_ai_id = data.get('ai_id')
+            role = data.get('role', 'contributor')
+            
+            if not member_ai_id:
+                return json_response({
+                    "success": False,
+                    "error": "Missing required field: ai_id"
+                }, status=400)
+            
+            cursor = get_cursor()
+            cursor.execute("""
+                SELECT id, created_by
+                FROM projects
+                WHERE id = %s AND is_active = TRUE
+            """, (project_id,))
+            
+            project = cursor.fetchone()
+            
+            if not project:
+                return json_response({
+                    "success": False,
+                    "error": "Project not found"
+                }, status=404)
+            
+            if project['created_by'] != ai_id:
+                cursor.execute("""
+                    SELECT role FROM project_members
+                    WHERE project_id = %s AND ai_id = %s
+                """, (project_id, ai_id))
+                
+                member = cursor.fetchone()
+                if not member or member['role'] not in ['owner', 'admin']:
+                    return json_response({
+                        "success": False,
+                        "error": "You don't have permission to add members"
+                    }, status=403)
+            
+            cursor.execute("""
+                INSERT INTO project_members (project_id, ai_id, role)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (project_id, ai_id)
+                DO UPDATE SET role = %s
+                RETURNING id, project_id, ai_id, role, joined_at
+            """, (project_id, member_ai_id, role, role))
+            
+            project_member = cursor.fetchone()
+            cursor.connection.commit()
+            
+            logger.info(f"Added member {member_ai_id} to project {project_id} by AI {ai_id}")
+            
+            return json_response({
+                "success": True,
+                "message": "Member added successfully",
+                "member": project_member
+            })
+            
+        except Exception as e:
+            logger.error(f"Add project member error: {e}")
+            return json_response({
+                "success": False,
+                "error": "Failed to add project member"
+            }, status=500)
+    
+    async def remove_project_member(self, request: web.Request):
+        """Remove project member endpoint - DELETE /api/v1/project/{id}/member"""
+        try:
+            project_id = request.match_info['id']
+            ai_id = request.get('ai_id')
+            data = await request.json()
+            member_ai_id = data.get('ai_id')
+            
+            if not member_ai_id:
+                return json_response({
+                    "success": False,
+                    "error": "Missing required field: ai_id"
+                }, status=400)
+            
+            cursor = get_cursor()
+            cursor.execute("""
+                SELECT id, created_by
+                FROM projects
+                WHERE id = %s AND is_active = TRUE
+            """, (project_id,))
+            
+            project = cursor.fetchone()
+            
+            if not project:
+                return json_response({
+                    "success": False,
+                    "error": "Project not found"
+                }, status=404)
+            
+            if project['created_by'] != ai_id:
+                cursor.execute("""
+                    SELECT role FROM project_members
+                    WHERE project_id = %s AND ai_id = %s
+                """, (project_id, ai_id))
+                
+                member = cursor.fetchone()
+                if not member or member['role'] not in ['owner', 'admin']:
+                    return json_response({
+                        "success": False,
+                        "error": "You don't have permission to remove members"
+                    }, status=403)
+            
+            if project['created_by'] == member_ai_id:
+                return json_response({
+                    "success": False,
+                    "error": "Cannot remove project owner"
+                }, status=400)
+            
+            cursor.execute("""
+                DELETE FROM project_members
+                WHERE project_id = %s AND ai_id = %s
+            """, (project_id, member_ai_id))
+            
+            cursor.connection.commit()
+            
+            logger.info(f"Removed member {member_ai_id} from project {project_id} by AI {ai_id}")
+            
+            return json_response({
+                "success": True,
+                "message": "Member removed successfully"
+            })
+            
+        except Exception as e:
+            logger.error(f"Remove project member error: {e}")
+            return json_response({
+                "success": False,
+                "error": "Failed to remove project member"
+            }, status=500)
+    
+    # ==================== Brain State APIs ====================
+    
+    async def get_brain_state(self, request: web.Request):
+        """Get brain state endpoint - GET /api/v1/brain/state"""
+        try:
+            ai_id = request.get('ai_id')
+            
+            cursor = get_cursor()
+            cursor.execute("""
+                SELECT ai_id, task, last_thought, updated_at
+                FROM ai_current_state
+                WHERE ai_id = %s
+            """, (ai_id,))
+            
+            brain_state = cursor.fetchone()
+            
+            if not brain_state:
+                return json_response({
+                    "success": True,
+                    "brain_state": None,
+                    "message": "No brain state found"
+                })
+            
+            return json_response({
+                "success": True,
+                "brain_state": brain_state
+            })
+            
+        except Exception as e:
+            logger.error(f"Get brain state error: {e}")
+            return json_response({
+                "success": False,
+                "error": "Failed to get brain state"
+            }, status=500)
+    
+    async def update_brain_state(self, request: web.Request):
+        """Update brain state endpoint - PUT /api/v1/brain/state"""
+        try:
+            ai_id = request.get('ai_id')
+            data = await request.json()
+            task = data.get('task')
+            last_thought = data.get('last_thought')
+            
+            if not task and not last_thought:
+                return json_response({
+                    "success": False,
+                    "error": "At least one field (task or last_thought) must be provided"
+                }, status=400)
+            
+            cursor = get_cursor()
+            
+            update_fields = []
+            params = []
+            
+            if task:
+                update_fields.append("task = %s")
+                params.append(task)
+            
+            if last_thought:
+                update_fields.append("last_thought = %s")
+                params.append(last_thought)
+            
+            update_fields.append("updated_at = CURRENT_TIMESTAMP")
+            params.append(ai_id)
+            
+            cursor.execute(f"""
+                INSERT INTO ai_current_state (ai_id, task, last_thought)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (ai_id)
+                DO UPDATE SET {', '.join(update_fields)}
+                RETURNING ai_id, task, last_thought, updated_at
+            """, [ai_id, task or '', last_thought or ''] + params)
+            
+            brain_state = cursor.fetchone()
+            cursor.connection.commit()
+            
+            logger.info(f"Updated brain state for AI {ai_id}")
+            
+            return json_response({
+                "success": True,
+                "brain_state": brain_state
+            })
+            
+        except Exception as e:
+            logger.error(f"Update brain state error: {e}")
+            return json_response({
+                "success": False,
+                "error": "Failed to update brain state"
+            }, status=500)
+    
+    async def clear_brain_state(self, request: web.Request):
+        """Clear brain state endpoint - DELETE /api/v1/brain/state"""
+        try:
+            ai_id = request.get('ai_id')
+            
+            cursor = get_cursor()
+            cursor.execute("""
+                DELETE FROM ai_current_state
+                WHERE ai_id = %s
+            """, (ai_id,))
+            
+            cursor.connection.commit()
+            
+            logger.info(f"Cleared brain state for AI {ai_id}")
+            
+            return json_response({
+                "success": True,
+                "message": "Brain state cleared successfully"
+            })
+            
+        except Exception as e:
+            logger.error(f"Clear brain state error: {e}")
+            return json_response({
+                "success": False,
+                "error": "Failed to clear brain state"
             }, status=500)
 
 

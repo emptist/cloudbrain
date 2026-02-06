@@ -259,17 +259,6 @@ sys.path.insert(0, str(cloudbrain_dir / "client"))
 from cloudbrain_client.cloudbrain_collaboration_helper import CloudBrainCollaborationHelper
 from cloudbrain_client.ai_brain_state import BrainState
 
-# Try to import blog and familio clients (optional)
-try:
-    from cloudbrain_client.modules.ai_blog.websocket_blog_client import create_websocket_blog_client
-    from cloudbrain_client.modules.ai_familio.websocket_familio_client import create_websocket_familio_client
-    print("✅ Using LOCAL cloudbrain-client package")
-except ImportError:
-    # Blog and familio are optional, continue without them
-    print("⚠️  Blog and familio modules not available (optional features disabled)")
-    create_websocket_blog_client = None
-    create_websocket_familio_client = None
-
 
 def check_server_running(server_url: str = "ws://127.0.0.1:8768") -> bool:
     """
@@ -488,7 +477,7 @@ class AutonomousAIAgent:
         self._last_send_time = None
         self._send_cooldown = 5  # seconds
         
-        # Initialize client modules (blog and familio) - will be initialized after connection
+        # Initialize blog and familio as None (disabled)
         self.blog = None
         self.familio = None
         
@@ -519,30 +508,6 @@ class AutonomousAIAgent:
             print(f"⚠️  Brain state initialization skipped: {e}")
             print("   (Brain state features are optional - agent will continue without them)")
             self.brain_state = None
-    
-    def _init_modules(self):
-        """Initialize client modules (blog and familio)"""
-        if create_websocket_blog_client is None or create_websocket_familio_client is None:
-            print("⚠️  Blog and familio modules not available (optional features disabled)")
-            self.blog = None
-            self.familio = None
-            return
-        
-        try:
-            # Share the WebSocket connection with blog and familio clients
-            shared_websocket = self.helper.client.ws if self.helper.client else None
-            
-            self.blog = create_websocket_blog_client(self.server_url, self.ai_id, self.ai_name, shared_websocket=shared_websocket)
-            self.familio = create_websocket_familio_client(self.server_url, self.ai_id, self.ai_name, shared_websocket=shared_websocket)
-            
-            print("✅ CloudBrain modules initialized (blog & familio)")
-            print("   Using WebSocket-based clients for remote access")
-            print("   Sharing WebSocket connection with main helper")
-        except Exception as e:
-            print(f"⚠️  Error initializing modules: {e}")
-            print("   Blog and familio features disabled")
-            self.blog = None
-            self.familio = None
     
     async def _get_jwt_token(self):
         """Get JWT token from REST API"""
@@ -637,12 +602,6 @@ class AutonomousAIAgent:
         print("✅ Mesaĝa pritraktanto registrita")
         print()
         
-        # Initialize modules after connection is established
-        print("🔗 Konektigxas al blogo...")
-        print("🔗 Konektigxas al familio...")
-        self._init_modules()
-        print()
-        
         # Try to load previous brain state
         print("📂 Ŝarganta antaan staton...")
         previous_state = None
@@ -683,35 +642,6 @@ class AutonomousAIAgent:
         # Brain state is already initialized and loaded above
         # No need for separate session creation with BrainState
         self.session_id = None
-        
-        # Connect blog and familio WebSocket clients
-        if self.blog is not None:
-            print("🔗 Konektigxas al blogo...")
-            try:
-                blog_connected = await asyncio.wait_for(self.blog.connect(), timeout=5.0)
-                if not blog_connected:
-                    print("⚠️  Malsukcesis konekti al blogo")
-                    self.blog = None
-            except asyncio.TimeoutError:
-                print("⚠️  Malsukcesis konekti al blogo (timeout)")
-                self.blog = None
-            except Exception as e:
-                print(f"⚠️  Malsukcesis konekti al blogo ({e})")
-                self.blog = None
-        
-        if self.familio is not None:
-            print("🔗 Konektigxas al familio...")
-            try:
-                familio_connected = await asyncio.wait_for(self.familio.connect(), timeout=5.0)
-                if not familio_connected:
-                    print("⚠️  Malsukcesis konekti al familio")
-                    self.familio = None
-            except asyncio.TimeoutError:
-                print("⚠️  Malsukcesis konekti al familio (timeout)")
-                self.familio = None
-            except Exception as e:
-                print(f"⚠️  Malsukcesis konekti al familio ({e})")
-                self.familio = None
         
         print()
         

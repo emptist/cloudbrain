@@ -293,13 +293,15 @@ class CloudBrainServer:
             ai_id = auth_data.get('ai_id')
             auth_token = auth_data.get('auth_token')
             project_name = auth_data.get('project')
+            session_identifier = auth_data.get('session_identifier')
             
-            print(f"🔍 AI ID: {ai_id}, Token: {'provided' if auth_token else 'none'}, Project: {project_name}")
-            
-            if not ai_id:
-                print("❌ No AI ID provided")
-                await websocket.send(json.dumps({'error': 'ai_id required'}))
+            # Session identifier is required - it's the primary way to identify an AI
+            if not session_identifier:
+                print("❌ No session identifier provided")
+                await websocket.send(json.dumps({'error': 'session_identifier required'}))
                 return
+            
+            print(f"🔍 Session: {session_identifier}, Token: {'provided' if auth_token else 'none'}, Project: {project_name}")
             
             # Validate authentication token
             if auth_token:
@@ -536,11 +538,15 @@ class CloudBrainServer:
                 print(f"🔌 Current conn ID: {id(conn)}")
                 print(f"🔌 Same connection: {original_conn_id == id(conn)}")
             
-            # Generate git-like session identifier for this connection
-            # Similar to git commit hashes: first 7 chars of SHA-1 hash
-            session_data = f"{ai_id}-{datetime.now().isoformat()}-{uuid.uuid4().hex[:8]}"
-            session_hash = hashlib.sha1(session_data.encode()).hexdigest()
-            session_identifier = session_hash[:7]
+            # Use client-provided session identifier, or generate one as fallback
+            # Client generates session ID based on AI ID + timestamp + git hash
+            if not session_identifier:
+                session_data = f"{ai_id}-{datetime.now().isoformat()}-{uuid.uuid4().hex[:8]}"
+                session_hash = hashlib.sha1(session_data.encode()).hexdigest()
+                session_identifier = session_hash[:7]
+                print(f"🔑 Generated fallback session ID: {session_identifier}")
+            else:
+                print(f"🔑 Using client session ID: {session_identifier}")
             
             # Store session information
             # Use raw connection to bypass any CursorWrapper issues
@@ -552,8 +558,8 @@ class CloudBrainServer:
                 raw_cursor.execute("""
                     UPDATE ai_current_state 
                     SET session_identifier = %s, session_start_time = CURRENT_TIMESTAMP
-                    WHERE ai_id = %s
-                """, (session_identifier, ai_id))
+                    WHERE session_identifier = %s
+                    """, (session_identifier, session_identifier))
                 print("✅ ai_current_state UPDATE executed (raw)")
                 
                 # Record active session
@@ -561,7 +567,7 @@ class CloudBrainServer:
                     INSERT INTO ai_active_sessions 
                     (ai_id, session_id, session_identifier, connection_time, last_activity, project, is_active)
                     VALUES (%s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, %s, TRUE)
-                """, (ai_id, str(uuid.uuid4()), session_identifier, ai_project))
+                    """, (ai_id, str(uuid.uuid4()), session_identifier, ai_project))
                 print("✅ ai_active_sessions INSERT executed (raw)")
                 
                 raw_conn.commit()
@@ -574,33 +580,34 @@ class CloudBrainServer:
                 import traceback
                 traceback.print_exc()
                 raise
+        
+        # Use session_identifier as primary identifier for clients
+        self.clients[session_identifier] = websocket
+        self.client_projects[session_identifier] = ai_project
+        
+        print(f"✅ {ai_name} (AI {ai_id}, {ai_expertise}, v{ai_version}) connected")
+        print(f"🔑 Session ID: {session_identifier} (git-like hash)")
+        if ai_project:
+            print(f"📁 Project: {ai_project}")
             
-            self.clients[ai_id] = websocket
-            self.client_projects[ai_id] = ai_project
-            
-            print(f"✅ {ai_name} (AI {ai_id}, {ai_expertise}, v{ai_version}) connected")
-            print(f"🔑 Session ID: {session_identifier} (git-like hash)")
-            if ai_project:
-                print(f"📁 Project: {ai_project}")
-            
-            await websocket.send(json.dumps({
-                'type': 'connected',
-                'ai_id': ai_id,
-                'ai_name': ai_name,
-                'ai_nickname': ai_nickname,
-                'ai_expertise': ai_expertise,
-                'ai_version': ai_version,
-                'ai_project': ai_project,
-                'session_identifier': session_identifier,
-                'timestamp': datetime.now().isoformat()
-            }))
+        await websocket.send(json.dumps({
+            'type': 'connected',
+            'ai_id': ai_id,
+            'ai_name': ai_name,
+            'ai_nickname': ai_nickname,
+            'ai_expertise': ai_expertise,
+            'ai_version': ai_version,
+            'ai_project': ai_project,
+            'session_identifier': session_identifier,
+            'timestamp': datetime.now().isoformat()
+        }))
             
             async for message in websocket:
                 try:
                     data = json.loads(message)
-                    await self.handle_message(ai_id, data)
+                    await self.handle_message(session_identifier, data)
                 except json.JSONDecodeError:
-                    print(f"❌ Invalid JSON from AI {ai_id}")
+                    print(f"❌ Invalid JSON from session {session_identifier}")
                 except Exception as e:
                     print(f"❌ Error: {e}")
                     

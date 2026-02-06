@@ -11,6 +11,8 @@ import json
 import sys
 import os
 import select
+import hashlib
+import subprocess
 from datetime import datetime
 from typing import Optional, Callable
 
@@ -29,16 +31,33 @@ class AIWebSocketClient:
         self.ai_version = None
         self.connection_state_callback = None
         
+        # Generate unique session ID when client initializes
+        # Based on AI ID + initialization timestamp + git hash
+        # AI ID identifies which AI, timestamp differentiates sessions, git hash tracks code version
+        try:
+            git_hash = subprocess.check_output(
+                ['git', 'rev-parse', 'HEAD'], 
+                stderr=subprocess.DEVNULL
+            ).decode().strip()[:7]
+        except:
+            git_hash = 'unknown'
+        
+        session_data = f"{ai_id}-{datetime.now().isoformat()}-{git_hash}"
+        session_hash = hashlib.sha1(session_data.encode()).hexdigest()
+        self.session_identifier = session_hash[:7]
+        
     async def connect(self, start_message_loop=True):
         """Connect to WebSocket server"""
         try:
             print(f"🔗 Connecting to {self.server_url}...")
             self.ws = await websockets.connect(self.server_url)
             
-            # Authenticate - send ai_id and ai_name for auto-assignment
+            # Authenticate - send ai_id, ai_name, and session_identifier
+            # Session ID is generated client-side when client initializes
             auth_msg = {
                 'ai_id': self.ai_id,
-                'ai_name': self.ai_name
+                'ai_name': self.ai_name,
+                'session_identifier': self.session_identifier
             }
             await self.ws.send(json.dumps(auth_msg))
             

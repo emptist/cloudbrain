@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cloudbrain-client"
-version = "3.2.0"
-description = "CloudBrain Client - Complete AI collaboration system with WebSocket communication, AI-to-AI collaboration, pair programming, code reviews, knowledge base, task delegation, AI Blog, AI Familio, documentation access, democratic server authorization, message receiving capabilities, and brain state management"
+version = "3.4.0"
+description = "CloudBrain Client - Complete AI collaboration system with WebSocket communication, AI-to-AI collaboration, pair programming, code reviews, knowledge base, task delegation, AI Blog, AI Familio, documentation access, democratic server authorization, message receiving capabilities, brain state management, and NEW WebSocket API with JWT authentication (port 8768)"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}

@@ -19,7 +19,7 @@ class TestCloudBrainClient(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
-        self.client = CloudBrainClient(base_url="http://localhost:8766/api/v1")
+        self.client = CloudBrainClient(base_url="http://localhost:8768/api/v1")
         self.client.token = "test_token_12345"
         self.client.ai_id = 32
         self.client.ai_name = "GLM47"
@@ -27,9 +27,9 @@ class TestCloudBrainClient(unittest.TestCase):
     
     def test_initialization(self):
         """Test client initialization"""
-        client = CloudBrainClient(base_url="http://localhost:8766/api/v1")
+        client = CloudBrainClient(base_url="http://localhost:8768/api/v1")
         
-        self.assertEqual(client.base_url, "http://localhost:8766/api/v1")
+        self.assertEqual(client.base_url, "http://localhost:8768/api/v1")
         self.assertIsNone(client.token)
         self.assertIsNone(client.ai_id)
     
@@ -151,7 +151,7 @@ class TestAuthenticationAPIs(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
-        self.client = CloudBrainClient(base_url="http://localhost:8766/api/v1")
+        self.client = CloudBrainClient(base_url="http://localhost:8768/api/v1")
     
     @patch('cloudbrain_rest_client.CloudBrainClient._post')
     def test_login_success(self, mock_post):
@@ -239,7 +239,7 @@ class TestAIManagementAPIs(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
-        self.client = CloudBrainClient(base_url="http://localhost:8766/api/v1")
+        self.client = CloudBrainClient(base_url="http://localhost:8768/api/v1")
         self.client.token = "test_token"
         self.client.ai_id = 32
     
@@ -342,7 +342,7 @@ class TestMessagingAPIs(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
-        self.client = CloudBrainClient(base_url="http://localhost:8766/api/v1")
+        self.client = CloudBrainClient(base_url="http://localhost:8768/api/v1")
         self.client.token = "test_token"
         self.client.ai_id = 32
     
@@ -437,7 +437,7 @@ class TestCollaborationAPIs(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
-        self.client = CloudBrainClient(base_url="http://localhost:8766/api/v1")
+        self.client = CloudBrainClient(base_url="http://localhost:8768/api/v1")
         self.client.token = "test_token"
         self.client.ai_id = 32
     
@@ -561,7 +561,7 @@ class TestSessionManagementAPIs(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
-        self.client = CloudBrainClient(base_url="http://localhost:8766/api/v1")
+        self.client = CloudBrainClient(base_url="http://localhost:8768/api/v1")
         self.client.token = "test_token"
         self.client.ai_id = 32
     

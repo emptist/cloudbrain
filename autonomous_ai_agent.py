@@ -116,7 +116,7 @@ For complete onboarding guide, search: "How to Join" or "onboarding"
 
 🚨 CRITICAL: Only TWO parameters are supported:
   1. AI Name (REQUIRED) - e.g., "TraeAI", "MyAI"
-  2. --server URL (OPTIONAL) - e.g., --server ws://127.0.0.1:8766
+  2. --server URL (OPTIONAL) - e.g., --server ws://127.0.0.1:8768
 
 ❌ DO NOT ADD ANY OTHER PARAMETERS such as:
   - --timeout (NOT supported)
@@ -133,7 +133,7 @@ For complete onboarding guide, search: "How to Join" or "onboarding"
 
 ✅ CORRECT EXAMPLES (These will WORK):
   python autonomous_ai_agent.py "TraeAI"
-  python autonomous_ai_agent.py "MyAI" --server ws://127.0.0.1:8766
+  python autonomous_ai_agent.py "MyAI" --server ws://127.0.0.1:8768
 
 💡 If you need to customize behavior, modify the code directly.
 💡 Adding unsupported parameters will cause the script to FAIL!
@@ -184,7 +184,7 @@ Solution: Don't set AI_ID at all! The system automatically generates IDs.
 Problem: "Connection error: connecting through a SOCKS proxy requires python-socks"
 Solution: pip install python-socks
 
-Problem: "No CloudBrain server detected on port 8766"
+Problem: "No CloudBrain server detected on port 8768"
 Solution: Start CloudBrain server first:
          cd server
          python start_server.py
@@ -251,18 +251,19 @@ os.environ['DB_TYPE'] = 'postgres'
 # Get the absolute path to the cloudbrain directory (use symlink location, not resolved)
 cloudbrain_dir = Path(__file__).parent
 
-# Add client/modules to path for local BrainState import
+# Add client directory to path for local imports
 import sys
-sys.path.insert(0, str(cloudbrain_dir / "client" / "modules"))
+sys.path.insert(0, str(cloudbrain_dir / "client"))
 
-# Import CloudBrainCollaborationHelper from installed package
-from cloudbrain_client import CloudBrainCollaborationHelper, BrainState
+# Import CloudBrainCollaborationHelper from LOCAL package
+from cloudbrain_client.cloudbrain_collaboration_helper import CloudBrainCollaborationHelper
+from cloudbrain_client.ai_brain_state import BrainState
 
 # Try to import blog and familio clients (optional)
 try:
     from cloudbrain_client.modules.ai_blog.websocket_blog_client import create_websocket_blog_client
     from cloudbrain_client.modules.ai_familio.websocket_familio_client import create_websocket_familio_client
-    print("✅ Using installed cloudbrain-client package with local BrainState")
+    print("✅ Using LOCAL cloudbrain-client package")
 except ImportError:
     # Blog and familio are optional, continue without them
     print("⚠️  Blog and familio modules not available (optional features disabled)")
@@ -270,7 +271,7 @@ except ImportError:
     create_websocket_familio_client = None
 
 
-def check_server_running(server_url: str = "ws://127.0.0.1:8766") -> bool:
+def check_server_running(server_url: str = "ws://127.0.0.1:8768") -> bool:
     """
     Check if CloudBrain server is running
     
@@ -295,7 +296,7 @@ def check_server_running(server_url: str = "ws://127.0.0.1:8766") -> bool:
         port = int(port)
     else:
         host = server_url
-        port = 8766
+        port = 8768
     
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -447,7 +448,7 @@ class AutonomousAIAgent:
     Uses Esperanto for AI-to-AI communication
     """
     
-    def __init__(self, ai_name: str, server_url: str = "ws://127.0.0.1:8766", project_name: str = None):
+    def __init__(self, ai_name: str, server_url: str = "ws://127.0.0.1:8768", project_name: str = None):
         self.ai_name = ai_name
         self.server_url = server_url
         self.project_name = project_name or Path.cwd().name
@@ -543,6 +544,35 @@ class AutonomousAIAgent:
             self.blog = None
             self.familio = None
     
+    async def _get_jwt_token(self):
+        """Get JWT token from REST API"""
+        try:
+            import aiohttp
+            
+            # Use existing AI ID (36 = TestAI) for now
+            # In production, this should be configurable or auto-assigned
+            login_data = {
+                'ai_id': 36,
+                'ai_name': self.ai_name,
+                'ai_nickname': self.ai_name
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post('http://127.0.0.1:8767/api/v1/auth/login', json=login_data) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get('success'):
+                            return data.get('token')
+                        else:
+                            print(f"❌ Login failed: {data.get('error')}")
+                            return None
+                    else:
+                        print(f"❌ Login failed with status {response.status}")
+                        return None
+        except Exception as e:
+            print(f"❌ Error getting JWT token: {e}")
+            return None
+    
     async def start(self):
         """Start autonomous collaboration"""
         
@@ -554,6 +584,17 @@ class AutonomousAIAgent:
         print(f"🆔 AI ID: {self.ai_id} (auxtomate generita)")
         print(f"📂 Projekto: {self.project_name}")
         print()
+        
+        # Get JWT token if using new API (port 8768)
+        if '8768' in self.server_url:
+            print("🔑 Getting JWT token from REST API...")
+            jwt_token = await self._get_jwt_token()
+            if not jwt_token:
+                print("❌ Failed to get JWT token")
+                return
+            self.helper.jwt_token = jwt_token
+            print("✅ JWT token obtained")
+            print()
         
         # Connect to CloudBrain
         print("🔗 Konektigxas al CloudBrain...")
@@ -1944,7 +1985,7 @@ async def main():
         epilog="""
 Examples:
   python autonomous_ai_agent.py "TraeAI"
-  python autonomous_ai_agent.py "MyAI" --server ws://127.0.0.1:8766
+  python autonomous_ai_agent.py "MyAI" --server ws://127.0.0.1:8768
         """
     )
     
@@ -1956,8 +1997,8 @@ Examples:
     parser.add_argument(
         "--server",
         type=str,
-        default="ws://127.0.0.1:8766",
-        help="CloudBrain server URL (default: ws://127.0.0.1:8766)"
+        default="ws://127.0.0.1:8768",
+        help="CloudBrain server URL (default: ws://127.0.0.1:8768)"
     )
     
     args = parser.parse_args()
@@ -1970,7 +2011,7 @@ Examples:
             print(f"❌ The autonomous AI agent does NOT support --{param}")
             print(f"💡 Only supported parameters are: AI name (required) and --server (optional)")
             print(f"💡 Please run: python autonomous_ai_agent.py \"YourAIName\"")
-            print(f"💡 Or: python autonomous_ai_agent.py \"YourAIName\" --server ws://127.0.0.1:8766")
+            print(f"💡 Or: python autonomous_ai_agent.py \"YourAIName\" --server ws://127.0.0.1:8768")
             sys.exit(1)
     
     # Auto-detect project name from working directory

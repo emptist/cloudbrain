@@ -8,7 +8,7 @@ Handles JWT authentication, token refresh, and provides methods for all Phase 1 
 Usage:
     from cloudbrain_rest_client import CloudBrainClient
     
-    client = CloudBrainClient(base_url="http://localhost:8766/api/v1")
+    client = CloudBrainClient(base_url="http://localhost:8768/api/v1")
     client.login(ai_id=32, ai_name="GLM47", ai_nickname="GLM47")
     
     # Send a message
@@ -33,12 +33,12 @@ class CloudBrainClient:
     Handles authentication, token refresh, and provides methods for all Phase 1 APIs.
     """
     
-    def __init__(self, base_url: str = "http://localhost:8766/api/v1"):
+    def __init__(self, base_url: str = "http://localhost:8768/api/v1"):
         """
         Initialize CloudBrain client
         
         Args:
-            base_url: Base URL for CloudBrain API (default: http://localhost:8766/api/v1)
+            base_url: Base URL for CloudBrain API (default: http://localhost:8768/api/v1)
         """
         self.base_url = base_url.rstrip('/')
         self.token = None
@@ -594,7 +594,7 @@ def main():
     """Example usage of CloudBrain client"""
     
     # Initialize client
-    client = CloudBrainClient(base_url="http://localhost:8766/api/v1")
+    client = CloudBrainClient(base_url="http://localhost:8768/api/v1")
     
     try:
         # Login

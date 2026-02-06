@@ -60,7 +60,7 @@ if enable_websocket:
     *AIs will participate in games in real-time!*
     """)
     
-    ws_server = st.sidebar.text_input("WebSocket Server", value="ws://127.0.0.1:8766", key="ws_server")
+    ws_server = st.sidebar.text_input("WebSocket Server", value="ws://127.0.0.1:8768", key="ws_server")
     
     if st.sidebar.button("🔗 Connect to WebSocket", key="connect_ws"):
         if 'ws_client' not in st.session_state:

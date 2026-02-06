@@ -13,7 +13,7 @@ class CloudBrainConfig:
     
     # Server Configuration
     SERVER_HOST: str = os.getenv('CLOUDBRAIN_HOST', '127.0.0.1')
-    SERVER_PORT: int = int(os.getenv('CLOUDBRAIN_PORT', '8766'))
+    SERVER_PORT: int = int(os.getenv('CLOUDBRAIN_PORT', '8768'))
     SERVER_URL: str = f"ws://{SERVER_HOST}:{SERVER_PORT}"
     
     # Database Configuration

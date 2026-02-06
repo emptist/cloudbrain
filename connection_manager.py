@@ -22,7 +22,7 @@ async def check_and_connect():
     helper = CloudBrainCollaborationHelper(
         ai_id=22,
         ai_name="MiniMax",
-        server_url="ws://127.0.0.1:8766"
+        server_url="ws://127.0.0.1:8768"
     )
 
     connected = await helper.connect()

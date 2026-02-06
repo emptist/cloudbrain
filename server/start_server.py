@@ -26,7 +26,7 @@ from websocket_api import create_websocket_api, ws_manager
 logger = get_logger("cloudbrain.server")
 
 
-def is_server_running(host='127.0.0.1', port=8766):
+def is_server_running(host='127.0.0.1', port=8768):
     """Check if CloudBrain server is already running on the specified port"""
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -93,8 +93,8 @@ def print_banner():
     print("📋 SERVER INFORMATION")
     print("-" * 70)
     print(f"📍 Host:           127.0.0.1")
-    print(f"🔌 WebSocket Port: 8766 (AIs connect here to join LA AI Familio)")
-    print(f"🌐 WebSocket:      ws://127.0.0.1:8766")
+    print(f"🔌 WebSocket Port: 8768 (AIs connect here to join LA AI Familio)")
+    print(f"🌐 WebSocket:      ws://127.0.0.1:8768")
     print(f"📡 REST API Port:  8767 (HTTP API for programmatic access)")
     print(f"🌐 REST API:       http://127.0.0.1:8767/api/v1")
     print(f"📚 API Docs:       http://127.0.0.1:8767/api/v1/docs")
@@ -129,7 +129,7 @@ def print_banner():
     
     print("📚 CLIENT USAGE - Join LA AI Familio")
     print("-" * 70)
-    print("To connect an AI client to port 8766 and join LA AI Familio, run:")
+    print("To connect an AI client to port 8768 and join LA AI Familio, run:")
     print()
     print("  python client/cloudbrain_client.py <ai_id> [project_name]")
     print()
@@ -204,15 +204,14 @@ def print_banner():
 class CloudBrainServer:
     """CloudBrain WebSocket Server"""
     
-    def __init__(self, host='127.0.0.1', port=8766, db_path='ai_db/cloudbrain.db'):
+    def __init__(self, host='127.0.0.1', port=8768):
         self.host = host
         self.port = port
-        self.db_path = db_path
         self.clients: Dict[int, websockets.WebSocketServerProtocol] = {}
         self.client_projects: Dict[int, str] = {}
         
         # Initialize token manager for authentication
-        self.token_manager = TokenManager(db_path)
+        self.token_manager = TokenManager()
         
         # Initialize brain state tables
         self._init_brain_state_tables()
@@ -275,327 +274,177 @@ class CloudBrainServer:
         conn.close()
         
         print("✅ Brain state tables initialized")
-        
-    async def handle_client(self, websocket):
-        """Handle new client connection"""
-        print(f"🔗 New connection from {websocket.remote_address}")
-        
-        try:
-            ai_id = None
-            ai_name = "Unknown"
-            
-            print("📥 Waiting for first message...")
-            first_msg = await websocket.recv()
-            print(f"📥 Received raw message: {first_msg[:100]}...")
-            auth_data = json.loads(first_msg)
-            print(f"📥 Parsed auth data: {auth_data}")
-            
-            ai_id = auth_data.get('ai_id')
-            auth_token = auth_data.get('auth_token')
-            project_name = auth_data.get('project')
-            session_identifier = auth_data.get('session_identifier')
-            project_id = auth_data.get('project_id')
-            client_git_hash = auth_data.get('git_hash')
-            
-            # Session identifier is required - it's the primary way to identify an AI
-            if not session_identifier:
-                print("❌ No session identifier provided")
-                await websocket.send(json.dumps({'error': 'session_identifier required'}))
-                return
-            
-            print(f"🔍 Session: {session_identifier}, Token: {'provided' if auth_token else 'none'}, Project ID: {project_id}, Git Hash: {client_git_hash}")
-            
-            # Validate authentication token
-            if auth_token:
-                print("🔐 Validating token...")
-                validation_result = self.token_manager.validate_token(auth_token)
-                
-                if not validation_result['valid']:
-                    print(f"❌ Token validation failed: {validation_result['error']}")
-                    await websocket.send(json.dumps({
-                        'error': f'Authentication failed: {validation_result["error"]}'
-                    }))
-                    return
-                
-                # Verify token belongs to the claimed AI
-                if validation_result['ai_id'] != ai_id:
-                    print(f"❌ Token mismatch: token belongs to AI {validation_result['ai_id']}, not {ai_id}")
-                    await websocket.send(json.dumps({
-                        'error': 'Token does not belong to this AI'
-                    }))
-                    return
-                
-                print(f"✅ Token validated for AI {ai_id} ({validation_result['ai_name']})")
-                
-                # Check project permissions if project specified
-                if project_name:
-                    permission_check = self.token_manager.check_project_permission(ai_id, project_name)
-                    if not permission_check['has_permission']:
-                        print(f"❌ AI {ai_id} does not have permission for project '{project_name}'")
-                        await websocket.send(json.dumps({
-                            'error': f'No permission for project: {project_name}'
-                        }))
-                        return
-                    print(f"✅ Project permission verified: {project_name} ({permission_check['role']})")
-                
-                # Log successful authentication to audit table
+
+    async def _receive_auth_message(self, websocket):
+        """Receive and parse the first authentication message from client"""
+        print("📥 Waiting for first message...")
+        first_msg = await websocket.recv()
+        print(f"📥 Received raw message: {first_msg[:100]}...")
+        auth_data = json.loads(first_msg)
+        print(f"📥 Parsed auth data: {auth_data}")
+        return auth_data
+
+    def _validate_auth_token(self, auth_token, ai_id, project_name):
+        """Validate authentication token and check project permissions"""
+        if not auth_token:
+            print("⚠️  No token provided - allowing connection for now")
+            if ai_id != 999:
+                print(f"⚠️  Logging auth attempt for AI {ai_id}")
                 self.token_manager.log_authentication(
                     ai_id=ai_id,
                     project=project_name,
-                    success=True,
-                    details=f"Token: {validation_result['token_prefix']}"
+                    success=False,
+                    details="No token provided"
                 )
-            else:
-                # No token provided - allow connection (AI 999 may not have token yet)
-                print("⚠️  No token provided - allowing connection for now")
-                if ai_id != 999:
-                    print(f"⚠️  Logging auth attempt for AI {ai_id}")
-                    self.token_manager.log_authentication(
-                        ai_id=ai_id,
-                        project=project_name,
-                        success=False,
-                        details="No token provided"
-                    )
-            
-            print("🔌 Connecting to database...")
-            conn = get_db_connection()
-            print(f"✅ Database connected: {id(conn)}")
-            cursor = conn.cursor()
-            print(f"✅ Raw cursor created: {id(cursor)}")
-            print(f"🔌 Original conn ID: {id(conn)}")
-            
-            # Store cursor's underlying connection for comparison later
-            original_conn_id = id(conn)
-            cursor.execute("SELECT id, name, nickname, expertise, version, project FROM ai_profiles WHERE id = %s", (ai_id,))
-            print("✅ Query executed")
+            return True, None
+
+        print("🔐 Validating token...")
+        validation_result = self.token_manager.validate_token(auth_token)
+
+        if not validation_result['valid']:
+            print(f"❌ Token validation failed: {validation_result['error']}")
+            return False, f'Authentication failed: {validation_result["error"]}'
+
+        if validation_result['ai_id'] != ai_id:
+            print(f"❌ Token mismatch: token belongs to AI {validation_result['ai_id']}, not {ai_id}")
+            return False, 'Token does not belong to this AI'
+
+        print(f"✅ Token validated for AI {ai_id} ({validation_result['ai_name']})")
+
+        if project_name:
+            permission_check = self.token_manager.check_project_permission(ai_id, project_name)
+            if not permission_check['has_permission']:
+                print(f"❌ AI {ai_id} does not have permission for project '{project_name}'")
+                return False, f'No permission for project: {project_name}'
+            print(f"✅ Project permission verified: {project_name} ({permission_check['role']})")
+
+        self.token_manager.log_authentication(
+            ai_id=ai_id,
+            project=project_name,
+            success=True,
+            details=f"Token: {validation_result['token_prefix']}"
+        )
+        return True, None
+
+    def _get_or_create_ai_profile(self, cursor, conn, ai_id, auth_data, project_name):
+        """Get existing AI profile or create new one for AI 999"""
+        ai_name = auth_data.get('ai_name', '')
+        
+        cursor.execute("SELECT id, name, nickname, expertise, version, project FROM ai_profiles WHERE id = %s", (ai_id,))
+        ai_profile = cursor.fetchone()
+        print(f"📊 AI profile found: {ai_profile}")
+
+        if ai_profile:
+            return ai_profile
+
+        if ai_id != 999:
+            return None
+
+        print("🔄 Processing AI 999 (auto-assignment)")
+        if ai_name:
+            print("🔍 Checking for existing AI with same name...")
+            cursor.execute("SELECT id, name, nickname, expertise, version, project FROM ai_profiles WHERE name = %s", (ai_name,))
             ai_profile = cursor.fetchone()
-            print(f"📊 AI profile found: {ai_profile}")
-            
-            if not ai_profile:
-                # AI 999 is for auto-assignment
-                if ai_id == 999:
-                    print("🔄 Processing AI 999 (auto-assignment)")
-                    # First check if an AI with this name already exists
-                    ai_name = auth_data.get('ai_name', '')
-                    print(f"📝 Requested AI name: '{ai_name}'")
-                    if ai_name:
-                        print("🔍 Checking for existing AI with same name...")
-                        cursor.execute("SELECT id, name, nickname, expertise, version, project FROM ai_profiles WHERE name = %s", (ai_name,))
-                        ai_profile = cursor.fetchone()
-                        print(f"📊 Existing profile search result: {ai_profile}")
-                        
-                        if ai_profile:
-                            # Use existing AI profile
-                            ai_id = ai_profile[0]
-                            print(f"✅ Found existing AI profile: {ai_id} ({ai_name})")
-                            ai_name = ai_profile[1]
-                            ai_nickname = ai_profile[2]
-                            ai_expertise = ai_profile[3]
-                            ai_version = ai_profile[4]
-                            ai_project = ai_profile[5]
-                            ai_profile = {
-                                'id': ai_id,
-                                'name': ai_name,
-                                'nickname': ai_nickname,
-                                'expertise': ai_expertise,
-                                'version': ai_version,
-                                'project': ai_project
-                            }
-                            # Continue to rest of connection code
-                        else:
-                            # Auto-assign a new AI ID
-                            print("🆕 Auto-assigning new AI ID...")
-                            cursor.execute("SELECT MAX(id) as max_id FROM ai_profiles")
-                            result = cursor.fetchone()
-                            max_id = result[0] if result and result[0] else 0
-                            new_id = max_id + 1
-                            print(f"📊 Max existing ID: {max_id}, New ID will be: {new_id}")
-                            
-                            # Limit AI IDs to < 99
-                            if new_id >= 99:
-                                # Find the smallest unused ID
-                                cursor.execute("SELECT id FROM ai_profiles ORDER BY id")
-                                existing_ids = {row[0] for row in cursor.fetchall()}
-                                for i in range(1, 99):
-                                    if i not in existing_ids:
-                                        new_id = i
-                                        break
-                                print(f"📊 Found smallest unused ID: {new_id}")
-                            
-                            # Create new AI profile
-                            ai_name = auth_data.get('ai_name', f'AI_{new_id}')
-                            ai_nickname = auth_data.get('ai_nickname', '')
-                            ai_expertise = auth_data.get('ai_expertise', 'General')
-                            ai_version = '1.0.0'
-                            ai_project = project_name or ''
-                            
-                            print(f"📝 Creating new profile: ID={new_id}, name={ai_name}, nickname={ai_nickname}")
-                            
-                            try:
-                                cursor.execute("""
-                                    INSERT INTO ai_profiles (id, name, nickname, expertise, version, project)
-                                    VALUES (%s, %s, %s, %s, %s, %s)
-                                """, (new_id, ai_name, ai_nickname, ai_expertise, ai_version, ai_project))
-                                print("✅ INSERT executed for ai_profiles")
-                                
-                                # Explicitly commit BEFORE verification
-                                try:
-                                    conn.commit()
-                                    print("✅ COMMIT executed for ai_profiles")
-                                except Exception as commit_err:
-                                    print(f"❌ COMMIT FAILED: {commit_err}")
-                                    import traceback
-                                    traceback.print_exc()
-                                    raise
-                                
-                                # Verify the insert worked with a FRESH connection
-                                print(f"🔍 Verifying with FRESH connection...")
-                                print(f"🔍 Looking for AI ID: {new_id}")
-                                verify_conn = get_db_connection()
-                                print(f"🔍 Verify connection: {id(verify_conn)}")
-                                verify_cursor = verify_conn.cursor()
-                                verify_cursor.execute("SELECT id, name FROM ai_profiles ORDER BY id DESC LIMIT 5")
-                                all_profiles = verify_cursor.fetchall()
-                                print(f"🔍 All recent profiles: {all_profiles}")
-                                verify_cursor.execute("SELECT id, name FROM ai_profiles WHERE id = %s", (new_id,))
-                                verify_result = verify_cursor.fetchone()
-                                print(f"🔍 Specific result for ID {new_id}: {verify_result}")
-                                verify_conn.close()
-                                print(f"✅ Verified insert with fresh conn: {verify_result}")
-                                
-                                if verify_result:
-                                    print("✅ AI profile created and VERIFIED successfully")
-                                else:
-                                    raise Exception("Profile not visible even after commit!")
-                                
-                                verify_cursor.close()
-                            except Exception as e:
-                                print(f"❌ Error creating AI profile: {e}")
-                                import traceback
-                                traceback.print_exc()
-                                conn.rollback()
-                                raise
-                            
-                            # Also create ai_current_state record for this new AI
-                            try:
-                                cursor.execute("""
-                                    INSERT INTO ai_current_state (ai_id, current_task, current_cycle, cycle_count, last_activity)
-                                    VALUES (%s, %s, 1, 0, CURRENT_TIMESTAMP)
-                                """, (new_id, 'New AI connected'))
-                                conn.commit()
-                                print("✅ AI current state created successfully")
-                            except Exception as e:
-                                print(f"❌ Error creating AI current state: {e}")
-                                conn.rollback()
-                                raise
-                            
-                            ai_id = new_id
-                            ai_profile = {
-                                'id': ai_id,
-                                'name': ai_name,
-                                'nickname': ai_nickname,
-                                'expertise': ai_expertise,
-                                'version': ai_version,
-                                'project': ai_project
-                            }
-                            
-                            print(f"✅ Auto-assigned AI ID: {ai_id} ({ai_name})")
-                else:
-                    conn.close()
-                    await websocket.send(json.dumps({'error': f'AI {ai_id} not found'}))
-                    return
-            
-            # Handle both tuple (from DB) and dict (from auto-assignment) formats
-            if isinstance(ai_profile, dict):
-                ai_name = ai_profile['name']
-                ai_nickname = ai_profile['nickname']
-                ai_expertise = ai_profile['expertise']
-                ai_version = ai_profile['version']
-                ai_project = ai_profile['project']
-            else:
-                ai_name = ai_profile[1]
-                ai_nickname = ai_profile[2]
-                ai_expertise = ai_profile[3]
-                ai_version = ai_profile[4]
-                ai_project = ai_profile[5]
-            
-            # Use project from connection (session-specific), not stored in database
-            # This allows AI to work on different projects in different sessions
-            if project_name:
-                ai_project = project_name
-                print(f"📁 Session project: {project_name}")
-            elif ai_project:
-                print(f"📁 Default project: {ai_project}")
-            
-            # NOTE: Don't close conn here - we need to use it for session operations
-            # conn.close() will be called later
-            
-            print(f"🔌 Using connection: {type(conn)}")
-            print(f"🔌 Connection closed state: {conn.closed}")
-            print(f"🔌 Transaction status: {conn.status}")
-            
-            # Verify this is the same connection
-            if 'original_conn_id' in locals():
-                print(f"🔌 Original conn ID: {original_conn_id}")
-                print(f"🔌 Current conn ID: {id(conn)}")
-                print(f"🔌 Same connection: {original_conn_id == id(conn)}")
-            
-            # Use client-provided session identifier, or generate one as fallback
-            # Client generates session ID based on AI ID + project_id + timestamp + git hash
-            if not session_identifier:
-                session_data = f"{ai_id}-{datetime.now().isoformat()}-{uuid.uuid4().hex[:8]}"
-                session_hash = hashlib.sha1(session_data.encode()).hexdigest()
-                session_identifier = session_hash[:7]
-                print(f"🔑 Generated fallback session ID: {session_identifier}")
-            else:
-                print(f"🔑 Using client session ID: {session_identifier}")
-            
-            # Use project_id from client, or fallback to ai_project
-            final_project_id = project_id if project_id else ai_project
-            final_git_hash = client_git_hash if client_git_hash else 'unknown'
-            
-            # Store session information
-            # Use raw connection to bypass any CursorWrapper issues
-            try:
-                raw_conn = get_db_connection()
-                raw_cursor = raw_conn.cursor()
-                
-                # Update ai_current_state with session identifier, project_id, and git_hash
-                raw_cursor.execute("""
-                    UPDATE ai_current_state 
-                    SET session_identifier = %s, session_start_time = CURRENT_TIMESTAMP, project = %s, git_hash = %s
-                    WHERE session_identifier = %s
-                    """, (session_identifier, final_project_id, final_git_hash, session_identifier))
-                print("✅ ai_current_state UPDATE executed (raw)")
-                
-                # Record active session
-                raw_cursor.execute("""
-                    INSERT INTO ai_active_sessions 
-                    (ai_id, session_id, session_identifier, connection_time, last_activity, project, is_active)
-                    VALUES (%s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, %s, TRUE)
-                    """, (ai_id, str(uuid.uuid4()), session_identifier, final_project_id))
-                print("✅ ai_active_sessions INSERT executed (raw)")
-                
-                raw_conn.commit()
-                print("✅ Session operations committed (raw)")
-                raw_cursor.close()
-                raw_conn.close()
-                print("✅ Raw connection closed")
-            except Exception as e:
-                print(f"❌ Error in session operations (raw): {e}")
-                import traceback
-                traceback.print_exc()
-                raise
-        
-        # Use session_identifier as primary identifier for clients
-        self.clients[session_identifier] = websocket
-        self.client_projects[session_identifier] = ai_project
-        
+            print(f"📊 Existing profile search result: {ai_profile}")
+
+            if ai_profile:
+                return ai_profile
+
+        return self._create_new_ai_profile(cursor, conn, auth_data, project_name)
+
+    def _create_new_ai_profile(self, cursor, conn, auth_data, project_name):
+        """Create a new AI profile with auto-assigned ID"""
+        print("🆕 Auto-assigning new AI ID...")
+        cursor.execute("SELECT MAX(id) as max_id FROM ai_profiles")
+        result = cursor.fetchone()
+        max_id = result[0] if result and result[0] else 0
+        new_id = max_id + 1
+        print(f"📊 Max existing ID: {max_id}, New ID will be: {new_id}")
+
+        if new_id >= 99:
+            cursor.execute("SELECT id FROM ai_profiles ORDER BY id")
+            existing_ids = {row[0] for row in cursor.fetchall()}
+            for i in range(1, 99):
+                if i not in existing_ids:
+                    new_id = i
+                    break
+            print(f"📊 Found smallest unused ID: {new_id}")
+
+        ai_name = auth_data.get('ai_name', f'AI_{new_id}')
+        ai_nickname = auth_data.get('ai_nickname', '')
+        ai_expertise = auth_data.get('ai_expertise', 'General')
+        ai_version = '1.0.0'
+        ai_project = project_name or ''
+
+        print(f"📝 Creating new profile: ID={new_id}, name={ai_name}, nickname={ai_nickname}")
+
+        cursor.execute("""
+            INSERT INTO ai_profiles (id, name, nickname, expertise, version, project)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (new_id, ai_name, ai_nickname, ai_expertise, ai_version, ai_project))
+        print("✅ INSERT executed for ai_profiles")
+
+        conn.commit()
+        print("✅ COMMIT executed for ai_profiles")
+
+        return {
+            'id': new_id,
+            'name': ai_name,
+            'nickname': ai_nickname,
+            'expertise': ai_expertise,
+            'version': ai_version,
+            'project': ai_project
+        }
+
+    def _setup_session(self, ai_id, session_identifier, project_id, git_hash):
+        """Set up session records in database"""
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                UPDATE ai_current_state 
+                SET session_identifier = %s, session_start_time = CURRENT_TIMESTAMP, project = %s, git_hash = %s
+                WHERE session_identifier = %s
+                """, (session_identifier, project_id, git_hash, session_identifier))
+            print("✅ ai_current_state UPDATE executed")
+
+            cursor.execute("""
+                INSERT INTO ai_active_sessions 
+                (ai_id, session_id, session_identifier, connection_time, last_activity, project, is_active)
+                VALUES (%s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, %s, TRUE)
+                """, (ai_id, str(uuid.uuid4()), session_identifier, project_id))
+            print("✅ ai_active_sessions INSERT executed")
+
+            conn.commit()
+            print("✅ Session operations committed")
+            conn.close()
+        except Exception as e:
+            print(f"❌ Error in session operations: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
+
+    async def _send_connected_response(self, websocket, ai_profile, session_identifier, ai_project):
+        """Send connected confirmation to client"""
+        if isinstance(ai_profile, dict):
+            ai_id = ai_profile['id']
+            ai_name = ai_profile['name']
+            ai_nickname = ai_profile['nickname']
+            ai_expertise = ai_profile['expertise']
+            ai_version = ai_profile['version']
+        else:
+            ai_id = ai_profile[0]
+            ai_name = ai_profile[1]
+            ai_nickname = ai_profile[2]
+            ai_expertise = ai_profile[3]
+            ai_version = ai_profile[4]
+
         print(f"✅ {ai_name} (AI {ai_id}, {ai_expertise}, v{ai_version}) connected")
         print(f"🔑 Session ID: {session_identifier} (git-like hash)")
         if ai_project:
             print(f"📁 Project: {ai_project}")
-            
+
         await websocket.send(json.dumps({
             'type': 'connected',
             'ai_id': ai_id,
@@ -607,16 +456,85 @@ class CloudBrainServer:
             'session_identifier': session_identifier,
             'timestamp': datetime.now().isoformat()
         }))
-            
-            async for message in websocket:
-                try:
-                    data = json.loads(message)
-                    await self.handle_message(session_identifier, data)
-                except json.JSONDecodeError:
-                    print(f"❌ Invalid JSON from session {session_identifier}")
-                except Exception as e:
-                    print(f"❌ Error: {e}")
-                    
+
+        return ai_id, ai_name
+
+    async def _handle_client_messages(self, websocket, session_identifier):
+        """Handle incoming messages from client"""
+        async for message in websocket:
+            try:
+                data = json.loads(message)
+                await self.handle_message(session_identifier, data)
+            except json.JSONDecodeError:
+                print(f"❌ Invalid JSON from session {session_identifier}")
+            except Exception as e:
+                print(f"❌ Error: {e}")
+
+    async def handle_client(self, websocket):
+        """Handle new client connection"""
+        print(f"🔗 New connection from {websocket.remote_address}")
+
+        ai_id = None
+        ai_name = "Unknown"
+
+        try:
+            auth_data = await self._receive_auth_message(websocket)
+
+            ai_id = auth_data.get('ai_id')
+            auth_token = auth_data.get('auth_token')
+            project_name = auth_data.get('project')
+            session_identifier = auth_data.get('session_identifier')
+            project_id = auth_data.get('project_id')
+            client_git_hash = auth_data.get('git_hash')
+
+            if not session_identifier:
+                print("❌ No session identifier provided")
+                await websocket.send(json.dumps({'error': 'session_identifier required'}))
+                return
+
+            print(f"🔍 Session: {session_identifier}, Token: {'provided' if auth_token else 'none'}, Project ID: {project_id}, Git Hash: {client_git_hash}")
+
+            is_valid, error_msg = self._validate_auth_token(auth_token, ai_id, project_name)
+            if not is_valid:
+                await websocket.send(json.dumps({'error': error_msg}))
+                return
+
+            print("🔌 Connecting to database...")
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            ai_profile = self._get_or_create_ai_profile(cursor, conn, ai_id, auth_data, project_name)
+
+            if not ai_profile:
+                conn.close()
+                await websocket.send(json.dumps({'error': f'AI {ai_id} not found'}))
+                return
+
+            if isinstance(ai_profile, dict):
+                ai_id = ai_profile['id']
+                ai_project = ai_profile['project']
+                ai_name = ai_profile['name']
+            else:
+                ai_id = ai_profile[0]
+                ai_project = ai_profile[5]
+                ai_name = ai_profile[1]
+
+            if project_name:
+                ai_project = project_name
+                print(f"📁 Session project: {project_name}")
+
+            final_project_id = project_id if project_id else ai_project
+            final_git_hash = client_git_hash if client_git_hash else 'unknown'
+
+            self._setup_session(ai_id, session_identifier, final_project_id, final_git_hash)
+
+            self.clients[session_identifier] = websocket
+            self.client_projects[session_identifier] = ai_project
+
+            ai_id, ai_name = await self._send_connected_response(websocket, ai_profile, session_identifier, ai_project)
+
+            await self._handle_client_messages(websocket, session_identifier)
+
         except websockets.exceptions.ConnectionClosed:
             pass
         except Exception as e:
@@ -628,7 +546,7 @@ class CloudBrainServer:
                 del self.clients[ai_id]
             print(f"👋 {ai_name} (AI {ai_id}) disconnected")
     
-    async def handle_message(self, sender_id: int, data: dict):
+    async def handle_message(self, session_identifier: str, data: dict):
         """Handle incoming message"""
         message_type = data.get('type')
         
@@ -723,7 +641,7 @@ class CloudBrainServer:
         else:
             print(f"⚠️  Unknown message type: {message_type}")
     
-    async def handle_send_message(self, sender_id: int, data: dict):
+    async def handle_send_message(self, session_identifier: str, data: dict):
         """Handle send_message request"""
         conversation_id = data.get('conversation_id', 1)
         message_type = data.get('message_type', 'message')
@@ -853,7 +771,7 @@ class CloudBrainServer:
         
         print(f"👥 Sent online users list to AI {sender_id}: {len(users)} users online")
     
-    async def handle_blog_create_post(self, sender_id: int, data: dict):
+    async def handle_blog_create_post(self, session_identifier: str, data: dict):
         """Handle blog_create_post request"""
         title = data.get('title', '')
         content = data.get('content', '')
@@ -904,7 +822,7 @@ class CloudBrainServer:
         
         print(f"📝 {ai_name} (AI {sender_id}) created blog post: {title}")
     
-    async def handle_blog_get_posts(self, sender_id: int, data: dict):
+    async def handle_blog_get_posts(self, session_identifier: str, data: dict):
         """Handle blog_get_posts request"""
         limit = data.get('limit', 20)
         offset = data.get('offset', 0)
@@ -948,7 +866,7 @@ class CloudBrainServer:
         
         print(f"📚 Sent {len(posts)} blog posts to AI {sender_id}")
     
-    async def handle_blog_get_post(self, sender_id: int, data: dict):
+    async def handle_blog_get_post(self, session_identifier: str, data: dict):
         """Handle blog_get_post request"""
         post_id = data.get('post_id')
         
@@ -1001,7 +919,7 @@ class CloudBrainServer:
             'timestamp': datetime.now().isoformat()
         }))
     
-    async def handle_blog_add_comment(self, sender_id: int, data: dict):
+    async def handle_blog_add_comment(self, session_identifier: str, data: dict):
         """Handle blog_add_comment request"""
         post_id = data.get('post_id')
         comment = data.get('comment', '')
@@ -1054,7 +972,7 @@ class CloudBrainServer:
         
         print(f"💬 {ai_name} (AI {sender_id}) added comment to post {post_id}")
     
-    async def handle_blog_like_post(self, sender_id: int, data: dict):
+    async def handle_blog_like_post(self, session_identifier: str, data: dict):
         """Handle blog_like_post request"""
         post_id = data.get('post_id')
         
@@ -1085,7 +1003,7 @@ class CloudBrainServer:
         
         print(f"❤️ AI {sender_id} liked post {post_id}")
     
-    async def handle_familio_follow_ai(self, sender_id: int, data: dict):
+    async def handle_familio_follow_ai(self, session_identifier: str, data: dict):
         """Handle familio_follow_ai request"""
         target_ai_id = data.get('target_ai_id')
         
@@ -1115,7 +1033,7 @@ class CloudBrainServer:
         
         print(f"👥 AI {sender_id} followed AI {target_ai_id}")
     
-    async def handle_familio_create_magazine(self, sender_id: int, data: dict):
+    async def handle_familio_create_magazine(self, session_identifier: str, data: dict):
         """Handle familio_create_magazine request"""
         title = data.get('title', '')
         description = data.get('description', '')
@@ -1157,7 +1075,7 @@ class CloudBrainServer:
         
         print(f"📰 {ai_name} (AI {sender_id}) created magazine: {title}")
     
-    async def handle_familio_get_magazines(self, sender_id: int, data: dict):
+    async def handle_familio_get_magazines(self, session_identifier: str, data: dict):
         """Handle familio_get_magazines request"""
         limit = data.get('limit', 20)
         offset = data.get('offset', 0)
@@ -1200,7 +1118,7 @@ class CloudBrainServer:
         
         print(f"📚 Sent {len(magazines)} magazines to AI {sender_id}")
     
-    async def handle_brain_save_state(self, sender_id: str, data: dict):
+    async def handle_brain_save_state(self, session_identifier: str, data: dict):
         """Handle brain_save_state request"""
         session_identifier = data.get('session_identifier')
         task = data.get('task')
@@ -1252,7 +1170,7 @@ class CloudBrainServer:
         
         print(f"💾 Session {session_identifier} saved brain state: {len(modified_files)} modified, {len(added_files)} added, {len(deleted_files)} deleted")
     
-    async def handle_brain_load_state(self, sender_id: str, data: dict):
+    async def handle_brain_load_state(self, session_identifier: str, data: dict):
         """Handle brain_load_state request"""
         session_identifier = data.get('session_identifier')
         
@@ -1299,7 +1217,7 @@ class CloudBrainServer:
         
         print(f"📂 {sender_id} loaded brain state (cycle {state.get('cycle_count', 0)})")
     
-    async def handle_brain_create_session(self, sender_id: int, data: dict):
+    async def handle_brain_create_session(self, session_identifier: str, data: dict):
         """Handle brain_create_session request"""
         session_type = data.get('session_type', 'autonomous')
         
@@ -1347,7 +1265,7 @@ class CloudBrainServer:
         
         print(f"🎬 {ai_name} (AI {sender_id}) started session {session_id}")
     
-    async def handle_brain_end_session(self, sender_id: int, data: dict):
+    async def handle_brain_end_session(self, session_identifier: str, data: dict):
         """Handle brain_end_session request"""
         session_id = data.get('session_id')
         stats = data.get('stats', {})
@@ -1376,7 +1294,7 @@ class CloudBrainServer:
         
         print(f"🏁 AI {sender_id} ended session {session_id}")
     
-    async def handle_brain_add_task(self, sender_id: int, data: dict):
+    async def handle_brain_add_task(self, session_identifier: str, data: dict):
         """Handle brain_add_task request"""
         title = data.get('title', '')
         description = data.get('description', '')
@@ -1405,7 +1323,7 @@ class CloudBrainServer:
         
         print(f"📝 AI {sender_id} added task: {title}")
     
-    async def handle_brain_update_task(self, sender_id: int, data: dict):
+    async def handle_brain_update_task(self, session_identifier: str, data: dict):
         """Handle brain_update_task request"""
         task_id = data.get('task_id')
         status = data.get('status')
@@ -1444,7 +1362,7 @@ class CloudBrainServer:
         
         print(f"✅ AI {sender_id} updated task {task_id}")
     
-    async def handle_brain_get_tasks(self, sender_id: int, data: dict):
+    async def handle_brain_get_tasks(self, session_identifier: str, data: dict):
         """Handle brain_get_tasks request"""
         status = data.get('status')
         
@@ -1494,7 +1412,7 @@ class CloudBrainServer:
         
         print(f"📋 Sent {len(tasks)} tasks to AI {sender_id}")
     
-    async def handle_brain_add_thought(self, sender_id: int, data: dict):
+    async def handle_brain_add_thought(self, session_identifier: str, data: dict):
         """Handle brain_add_thought request"""
         session_id = data.get('session_id')
         cycle_number = data.get('cycle_number')
@@ -1524,7 +1442,7 @@ class CloudBrainServer:
         
         print(f"💭 AI {sender_id} saved thought")
     
-    async def handle_brain_get_thoughts(self, sender_id: int, data: dict):
+    async def handle_brain_get_thoughts(self, session_identifier: str, data: dict):
         """Handle brain_get_thoughts request"""
         limit = data.get('limit', 50)
         offset = data.get('offset', 0)
@@ -1563,7 +1481,7 @@ class CloudBrainServer:
         
         print(f"💭 Sent {len(thoughts)} thoughts to AI {sender_id}")
     
-    async def handle_conversation_create(self, sender_id: int, data: dict):
+    async def handle_conversation_create(self, session_identifier: str, data: dict):
         """Handle conversation_create request"""
         title = data.get('title', 'New Conversation')
         description = data.get('description', '')
@@ -1594,7 +1512,7 @@ class CloudBrainServer:
         
         print(f"💬 Created conversation {conversation_id}: {title} (project: {project})")
     
-    async def handle_conversation_list(self, sender_id: int, data: dict):
+    async def handle_conversation_list(self, session_identifier: str, data: dict):
         """Handle conversation_list request"""
         project = data.get('project')
         status = data.get('status', 'active')
@@ -1630,7 +1548,7 @@ class CloudBrainServer:
         
         print(f"💬 Sent {len(conversations)} conversations to AI {sender_id} (project: {project})")
     
-    async def handle_conversation_get(self, sender_id: int, data: dict):
+    async def handle_conversation_get(self, session_identifier: str, data: dict):
         """Handle conversation_get request"""
         conversation_id = data.get('conversation_id')
         
@@ -1674,7 +1592,7 @@ class CloudBrainServer:
         
         print(f"💬 Sent conversation {conversation_id} with {len(messages)} messages to AI {sender_id}")
     
-    async def handle_project_switch(self, sender_id: int, data: dict):
+    async def handle_project_switch(self, session_identifier: str, data: dict):
         """Handle project_switch request"""
         new_project = data.get('project')
         
@@ -1724,7 +1642,7 @@ class CloudBrainServer:
         
         conn.close()
     
-    async def handle_code_create(self, sender_id: int, data: dict):
+    async def handle_code_create(self, session_identifier: str, data: dict):
         """Handle code_create request - create new code entry for collaboration"""
         project = data.get('project')
         file_path = data.get('file_path')
@@ -1773,7 +1691,7 @@ class CloudBrainServer:
         
         print(f"📝 AI {sender_id} created code entry {code_id} for {file_path} (v{version})")
     
-    async def handle_code_update(self, sender_id: int, data: dict):
+    async def handle_code_update(self, session_identifier: str, data: dict):
         """Handle code_update request - update existing code entry"""
         code_id = data.get('code_id')
         code_content = data.get('code_content')
@@ -1826,7 +1744,7 @@ class CloudBrainServer:
         
         print(f"📝 AI {sender_id} updated code entry {code_id} -> {new_code_id} (v{new_version})")
     
-    async def handle_code_list(self, sender_id: int, data: dict):
+    async def handle_code_list(self, session_identifier: str, data: dict):
         """Handle code_list request - list code entries for project"""
         project = data.get('project')
         file_path = data.get('file_path')
@@ -1877,7 +1795,7 @@ class CloudBrainServer:
         
         print(f"📋 Sent {len(code_entries)} code entries for project {project}")
     
-    async def handle_code_get(self, sender_id: int, data: dict):
+    async def handle_code_get(self, session_identifier: str, data: dict):
         """Handle code_get request - get specific code entry with reviews"""
         code_id = data.get('code_id')
         
@@ -1924,7 +1842,7 @@ class CloudBrainServer:
         
         print(f"📄 Sent code entry {code_id} with {len(reviews)} reviews")
     
-    async def handle_code_review_add(self, sender_id: int, data: dict):
+    async def handle_code_review_add(self, session_identifier: str, data: dict):
         """Handle code_review_add request - add review comment to code"""
         code_id = data.get('code_id')
         comment = data.get('comment')
@@ -1961,7 +1879,7 @@ class CloudBrainServer:
         
         print(f"💬 AI {sender_id} added review {review_id} to code {code_id}")
     
-    async def handle_code_deploy(self, sender_id: int, data: dict):
+    async def handle_code_deploy(self, session_identifier: str, data: dict):
         """Handle code_deploy request - mark code as deployed and log deployment"""
         code_id = data.get('code_id')
         
@@ -2015,7 +1933,7 @@ class CloudBrainServer:
         
         print(f"🚀 AI {sender_id} deployed code {code_id} to {code_entry['file_path']}")
     
-    async def handle_memory_create(self, sender_id: int, data: dict):
+    async def handle_memory_create(self, session_identifier: str, data: dict):
         """Handle memory_create request - create shared memory"""
         project = data.get('project')
         memory_type = data.get('memory_type', 'insight')
@@ -2057,7 +1975,7 @@ class CloudBrainServer:
         
         print(f"💭 AI {sender_id} created memory {memory_id}: {title}")
     
-    async def handle_memory_list(self, sender_id: int, data: dict):
+    async def handle_memory_list(self, session_identifier: str, data: dict):
         """Handle memory_list request - list shared memories"""
         project = data.get('project')
         memory_type = data.get('memory_type')
@@ -2123,7 +2041,7 @@ class CloudBrainServer:
         
         print(f"📋 Sent {len(memories)} memories for project {project}")
     
-    async def handle_memory_get(self, sender_id: int, data: dict):
+    async def handle_memory_get(self, session_identifier: str, data: dict):
         """Handle memory_get request - get specific memory with endorsements"""
         memory_id = data.get('memory_id')
         
@@ -2176,7 +2094,7 @@ class CloudBrainServer:
         
         print(f"📄 Sent memory {memory_id} with {len(endorsements)} endorsements")
     
-    async def handle_memory_endorse(self, sender_id: int, data: dict):
+    async def handle_memory_endorse(self, session_identifier: str, data: dict):
         """Handle memory_endorse request - endorse a memory"""
         memory_id = data.get('memory_id')
         endorsement_type = data.get('endorsement_type', 'useful')
@@ -2236,7 +2154,7 @@ class CloudBrainServer:
         
         print(f"👍 AI {sender_id} endorsed memory {memory_id}")
     
-    async def handle_who_am_i(self, sender_id: int, data: dict):
+    async def handle_who_am_i(self, session_identifier: str, data: dict):
         """Handle who_am_i request - help AI identify themselves"""
         conn = get_db_connection()
         cursor = get_cursor()
@@ -2270,7 +2188,7 @@ class CloudBrainServer:
         
         print(f"🔍 AI {sender_id} requested identity information")
     
-    async def handle_list_online_ais(self, sender_id: int, data: dict):
+    async def handle_list_online_ais(self, session_identifier: str, data: dict):
         """Handle list_online_ais request - list all connected AIs with session info"""
         online_ais = []
         
@@ -2314,7 +2232,7 @@ class CloudBrainServer:
         
         print(f"📋 Sent list of {len(online_ais)} online AIs to AI {sender_id}")
     
-    async def handle_token_generate(self, sender_id: int, data: dict):
+    async def handle_token_generate(self, session_identifier: str, data: dict):
         """Handle token_generate request"""
         project = data.get('project', 'cloudbrain')
         
@@ -2332,7 +2250,7 @@ class CloudBrainServer:
         
         print(f"🔑 Generated token for AI {sender_id} (project: {project})")
     
-    async def handle_token_validate(self, sender_id: int, data: dict):
+    async def handle_token_validate(self, session_identifier: str, data: dict):
         """Handle token_validate request"""
         token = data.get('token')
         
@@ -2353,7 +2271,7 @@ class CloudBrainServer:
         
         print(f"🔑 Token validation for AI {sender_id}: {is_valid}")
     
-    async def handle_check_project_permission(self, sender_id: int, data: dict):
+    async def handle_check_project_permission(self, session_identifier: str, data: dict):
         """Handle check_project_permission request"""
         ai_id = data.get('ai_id', sender_id)
         project = data.get('project')
@@ -2377,7 +2295,7 @@ class CloudBrainServer:
         
         print(f"🔑 Permission check for AI {ai_id} on project {project}: {permission}")
     
-    async def handle_grant_project_permission(self, sender_id: int, data: dict):
+    async def handle_grant_project_permission(self, session_identifier: str, data: dict):
         """Handle grant_project_permission request"""
         target_ai_id = data.get('target_ai_id')
         project = data.get('project')
@@ -2407,7 +2325,7 @@ class CloudBrainServer:
                 'error': 'Failed to grant permission'
             }))
     
-    async def handle_revoke_project_permission(self, sender_id: int, data: dict):
+    async def handle_revoke_project_permission(self, session_identifier: str, data: dict):
         """Handle revoke_project_permission request"""
         target_ai_id = data.get('target_ai_id')
         project = data.get('project')
@@ -2435,7 +2353,7 @@ class CloudBrainServer:
                 'error': 'Failed to revoke permission'
             }))
     
-    async def handle_blog_create_post(self, sender_id: int, data: dict):
+    async def handle_blog_create_post(self, session_identifier: str, data: dict):
         """Handle documentation_get request"""
         doc_id = data.get('doc_id')
         title = data.get('title')
@@ -2493,7 +2411,7 @@ class CloudBrainServer:
         
         print(f"📚 AI {sender_id} requested documentation: {title or doc_id or category}")
     
-    async def handle_documentation_list(self, sender_id: int, data: dict):
+    async def handle_documentation_list(self, session_identifier: str, data: dict):
         """Handle documentation_list request"""
         category = data.get('category')
         limit = data.get('limit', 50)
@@ -2544,7 +2462,7 @@ class CloudBrainServer:
         
         print(f"📚 AI {sender_id} listed {len(docs)} documents")
     
-    async def handle_documentation_search(self, sender_id: int, data: dict):
+    async def handle_documentation_search(self, session_identifier: str, data: dict):
         """Handle documentation_search request"""
         query = data.get('query', '')
         limit = data.get('limit', 20)
@@ -2601,7 +2519,7 @@ class CloudBrainServer:
         rest_runner = web.AppRunner(rest_app)
         await rest_runner.setup()
         
-        # REST API will run on port 8767 (WebSocket on 8766)
+        # REST API will run on port 8767 (WebSocket on 8768)
         rest_site = web.TCPSite(rest_runner, self.host, 8767)
         await rest_site.start()
         
@@ -2615,7 +2533,7 @@ class CloudBrainServer:
         ws_runner = web.AppRunner(ws_app.app)
         await ws_runner.setup()
         
-        # WebSocket API runs on port 8768 (separate from legacy WebSocket on 8766)
+        # WebSocket API runs on port 8768 (separate from legacy WebSocket on 8768)
         ws_site = web.TCPSite(ws_runner, self.host, 8768)
         await ws_site.start()
         
@@ -2643,17 +2561,15 @@ async def main():
     parser = argparse.ArgumentParser(description='CloudBrain Server - AI Collaboration System')
     parser.add_argument('--host', type=str, default='127.0.0.1',
                        help='Server host')
-    parser.add_argument('--port', type=int, default=8766,
+    parser.add_argument('--port', type=int, default=8768,
                        help='Server port')
-    parser.add_argument('--db-path', type=str, default='ai_db/cloudbrain.db',
-                       help='Database path')
     
     args = parser.parse_args()
     
     # Use environment configuration if not overridden by command line
     if args.host == '127.0.0.1':
         args.host = CloudBrainConfig.SERVER_HOST
-    if args.port == 8766:
+    if args.port == 8768:
         args.port = CloudBrainConfig.SERVER_PORT
     
     print_banner()
@@ -2665,14 +2581,13 @@ async def main():
     if not acquire_server_lock():
         print()
         print("❌ Cannot start server: Another instance is already running on this machine.")
-        print("💡 Only one CloudBrain server instance is allowed per machine on port 8766.")
+        print("💡 Only one CloudBrain server instance is allowed per machine on port 8768.")
         print("💡 This prevents fragmentation and ensures all AIs connect to the same server.")
         sys.exit(1)
     
     server = CloudBrainServer(
         host=args.host,
-        port=args.port,
-        db_path=args.db_path
+        port=args.port
     )
     
     if is_server_running(server.host, server.port):

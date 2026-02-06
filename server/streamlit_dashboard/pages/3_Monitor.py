@@ -36,7 +36,7 @@ st.sidebar.markdown("### 📋 Server Status")
 st.sidebar.markdown("""
 **Host**: 127.0.0.1
 
-**Port**: 8766
+**Port**: 8768
 
 **Protocol**: WebSocket
 
@@ -171,7 +171,7 @@ col1, col2, col3 = st.columns(3)
 
 with col1:
     st.success("✅ WebSocket Server: Running")
-    st.write("Port: 8766")
+    st.write("Port: 8768")
 
 with col2:
     st.success("✅ Database: Connected")

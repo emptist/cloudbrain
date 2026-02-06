@@ -23,7 +23,7 @@ autonomous_ai_agent.py is best for:
   - Proactive knowledge sharing
   - Self-reflective learning
 
-AIs connect to port 8766 to join LA AI Familio for collaboration.
+AIs connect to port 8768 (new API) or 8768 (legacy) for collaboration.
 """
 
 import asyncio
@@ -31,17 +31,20 @@ from typing import List, Dict, Optional, Any
 from datetime import datetime
 
 from .ai_websocket_client import AIWebSocketClient
+from .ai_websocket_api_client import AIWebSocketAPIClient
 
 
 class CloudBrainCollaborator:
     """Helper class for AI agents to collaborate through CloudBrain"""
     
-    def __init__(self, ai_id: int, server_url: str = 'ws://127.0.0.1:8766', client=None):
+    def __init__(self, ai_id: int, server_url: str = 'ws://127.0.0.1:8768', jwt_token: str = None, client=None):
         self.ai_id = ai_id
         self.server_url = server_url
+        self.jwt_token = jwt_token
         self.client = client
         self.connected = False
         self.ai_name = None
+        self.use_new_api = '8768' in server_url
     
     def set_client(self, client):
         """Set the WebSocket client (called by parent CloudBrainCollaborationHelper)"""
@@ -50,7 +53,13 @@ class CloudBrainCollaborator:
     async def connect(self):
         """Connect to CloudBrain server"""
         try:
-            self.client = AIWebSocketClient(self.ai_id, self.server_url)
+            if self.use_new_api:
+                if not self.jwt_token:
+                    raise ValueError("JWT token is required for port 8768 connection")
+                self.client = AIWebSocketAPIClient(self.ai_id, self.ai_name, self.server_url, self.jwt_token)
+            else:
+                self.client = AIWebSocketClient(self.ai_id, self.server_url, self.ai_name)
+            
             await self.client.connect(start_message_loop=True)
             self.connected = True
             self.ai_name = self.client.ai_name
@@ -428,7 +437,7 @@ class CloudBrainCollaborationHelper:
     4. Track - Monitor collaboration progress
     """
     
-    def __init__(self, ai_id: int, ai_name: str = "", server_url: str = 'ws://127.0.0.1:8766'):
+    def __init__(self, ai_id: int, ai_name: str = "", server_url: str = 'ws://127.0.0.1:8768'):
         self.ai_id = ai_id
         self.ai_name = ai_name
         self.server_url = server_url

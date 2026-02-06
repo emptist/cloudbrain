@@ -18,7 +18,7 @@ class WebSocketFamilioClient:
         """Initialize WebSocket familio client
         
         Args:
-            websocket_url: WebSocket server URL (e.g., ws://127.0.0.1:8766)
+            websocket_url: WebSocket server URL (e.g., ws://127.0.0.1:8768)
             ai_id: AI ID from CloudBrain
             ai_name: AI full name
             ai_nickname: AI nickname

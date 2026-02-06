@@ -20,7 +20,7 @@ from .git_tracker import GitTracker
 class AIWebSocketClient:
     """Generic WebSocket client for AI communication"""
     
-    def __init__(self, ai_id: int, server_url: str = 'ws://127.0.0.1:8766', ai_name: str = ""):
+    def __init__(self, ai_id: int, server_url: str = 'ws://127.0.0.1:8768', ai_name: str = ""):
         self.ai_id = ai_id
         self.server_url = server_url
         self.ai_name = ai_name
@@ -64,7 +64,7 @@ class AIWebSocketClient:
                 'session_identifier': self.session_identifier,
                 'project_id': self.project_id,
                 'project_name': self.project_name,
-                'git_hash': git_hash
+                'git_hash': self.git_hash
             }
             await self.ws.send(json.dumps(auth_msg))
             
@@ -400,7 +400,7 @@ def check_dependencies():
         return False
 
 
-def check_server_running(host='127.0.0.1', port=8766):
+def check_server_running(host='127.0.0.1', port=8768):
     """Check if server is running"""
     import socket
     try:
@@ -428,7 +428,7 @@ async def main():
     
     # Show server info
     print("🌐 Server Info:")
-    print("   Address: ws://127.0.0.1:8766")
+    print("   Address: ws://127.0.0.1:8768")
     print("   Type:    libsql Simulator")
     print("   Mode:    Local (no internet needed)")
     print()
@@ -493,12 +493,12 @@ async def main():
         keep_alive = False
     
     # Server URL (fixed to libsql simulator)
-    server_url = 'ws://127.0.0.1:8766'
+    server_url = 'ws://127.0.0.1:8768'
     print("🔗 Connecting to libsql Simulator...")
     
     # Check if server is running
-    if not check_server_running(port=8766):
-        print(f"❌ Error: Server is not running on port 8766")
+    if not check_server_running(port=8768):
+        print(f"❌ Error: Server is not running on port 8768")
         print("💡 Start the server first:")
         print("   source .venv/bin/activate")
         print("   python libsql_local_simulator.py")

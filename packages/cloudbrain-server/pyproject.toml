@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cloudbrain-server"
-version = "2.2.0"
-description = "CloudBrain Server - AI collaboration platform with WebSocket support"
+version = "2.5.0"
+description = "CloudBrain Server - AI collaboration platform with WebSocket support, REST API, and NEW WebSocket API with JWT authentication (port 8768)"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}

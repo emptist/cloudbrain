@@ -294,6 +294,8 @@ class CloudBrainServer:
             auth_token = auth_data.get('auth_token')
             project_name = auth_data.get('project')
             session_identifier = auth_data.get('session_identifier')
+            project_id = auth_data.get('project_id')
+            client_git_hash = auth_data.get('git_hash')
             
             # Session identifier is required - it's the primary way to identify an AI
             if not session_identifier:
@@ -301,7 +303,7 @@ class CloudBrainServer:
                 await websocket.send(json.dumps({'error': 'session_identifier required'}))
                 return
             
-            print(f"🔍 Session: {session_identifier}, Token: {'provided' if auth_token else 'none'}, Project: {project_name}")
+            print(f"🔍 Session: {session_identifier}, Token: {'provided' if auth_token else 'none'}, Project ID: {project_id}, Git Hash: {client_git_hash}")
             
             # Validate authentication token
             if auth_token:
@@ -539,7 +541,7 @@ class CloudBrainServer:
                 print(f"🔌 Same connection: {original_conn_id == id(conn)}")
             
             # Use client-provided session identifier, or generate one as fallback
-            # Client generates session ID based on AI ID + timestamp + git hash
+            # Client generates session ID based on AI ID + project_id + timestamp + git hash
             if not session_identifier:
                 session_data = f"{ai_id}-{datetime.now().isoformat()}-{uuid.uuid4().hex[:8]}"
                 session_hash = hashlib.sha1(session_data.encode()).hexdigest()
@@ -548,18 +550,22 @@ class CloudBrainServer:
             else:
                 print(f"🔑 Using client session ID: {session_identifier}")
             
+            # Use project_id from client, or fallback to ai_project
+            final_project_id = project_id if project_id else ai_project
+            final_git_hash = client_git_hash if client_git_hash else 'unknown'
+            
             # Store session information
             # Use raw connection to bypass any CursorWrapper issues
             try:
                 raw_conn = get_db_connection()
                 raw_cursor = raw_conn.cursor()
                 
-                # Update ai_current_state with session identifier
+                # Update ai_current_state with session identifier, project_id, and git_hash
                 raw_cursor.execute("""
                     UPDATE ai_current_state 
-                    SET session_identifier = %s, session_start_time = CURRENT_TIMESTAMP
+                    SET session_identifier = %s, session_start_time = CURRENT_TIMESTAMP, project = %s, git_hash = %s
                     WHERE session_identifier = %s
-                    """, (session_identifier, session_identifier))
+                    """, (session_identifier, final_project_id, final_git_hash, session_identifier))
                 print("✅ ai_current_state UPDATE executed (raw)")
                 
                 # Record active session
@@ -567,7 +573,7 @@ class CloudBrainServer:
                     INSERT INTO ai_active_sessions 
                     (ai_id, session_id, session_identifier, connection_time, last_activity, project, is_active)
                     VALUES (%s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, %s, TRUE)
-                    """, (ai_id, str(uuid.uuid4()), session_identifier, ai_project))
+                    """, (ai_id, str(uuid.uuid4()), session_identifier, final_project_id))
                 print("✅ ai_active_sessions INSERT executed (raw)")
                 
                 raw_conn.commit()

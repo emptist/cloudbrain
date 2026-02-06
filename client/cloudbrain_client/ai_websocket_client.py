@@ -32,8 +32,8 @@ class AIWebSocketClient:
         self.connection_state_callback = None
         
         # Generate unique session ID when client initializes
-        # Based on AI ID + initialization timestamp + git hash
-        # AI ID identifies which AI, timestamp differentiates sessions, git hash tracks code version
+        # Based on AI ID + project + timestamp + git hash
+        # AI ID identifies which AI, project tracks context, timestamp differentiates sessions, git hash tracks code version
         try:
             git_hash = subprocess.check_output(
                 ['git', 'rev-parse', 'HEAD'], 
@@ -42,9 +42,38 @@ class AIWebSocketClient:
         except:
             git_hash = 'unknown'
         
-        session_data = f"{ai_id}-{datetime.now().isoformat()}-{git_hash}"
+        # Get unique project ID (remote URL + git hash)
+        try:
+            remote_url = subprocess.check_output(
+                ['git', 'config', '--get', 'remote.origin.url'],
+                stderr=subprocess.DEVNULL
+            ).decode().strip()
+            if remote_url:
+                project_id = f"{remote_url}#{git_hash}"
+            else:
+                repo_path = subprocess.check_output(
+                    ['git', 'rev-parse', '--show-toplevel'],
+                    stderr=subprocess.DEVNULL
+                ).decode().strip()
+                project_id = f"{repo_path}#{git_hash}"
+        except:
+            project_id = f"default#{git_hash}"
+        
+        # Get project name for display
+        try:
+            project_name = subprocess.check_output(
+                ['git', 'rev-parse', '--show-toplevel'],
+                stderr=subprocess.DEVNULL
+            ).decode().strip().split('/')[-1]
+        except:
+            project_name = 'default'
+        
+        session_data = f"{ai_id}-{project_id}-{datetime.now().isoformat()}-{git_hash}"
         session_hash = hashlib.sha1(session_data.encode()).hexdigest()
         self.session_identifier = session_hash[:7]
+        self.project_id = project_id
+        self.project_name = project_name
+        self.git_hash = git_hash
         
     async def connect(self, start_message_loop=True):
         """Connect to WebSocket server"""
@@ -52,12 +81,15 @@ class AIWebSocketClient:
             print(f"🔗 Connecting to {self.server_url}...")
             self.ws = await websockets.connect(self.server_url)
             
-            # Authenticate - send ai_id, ai_name, and session_identifier
+            # Authenticate - send ai_id, ai_name, session_identifier, and project_id
             # Session ID is generated client-side when client initializes
             auth_msg = {
                 'ai_id': self.ai_id,
                 'ai_name': self.ai_name,
-                'session_identifier': self.session_identifier
+                'session_identifier': self.session_identifier,
+                'project_id': self.project_id,
+                'project_name': self.project_name,
+                'git_hash': git_hash
             }
             await self.ws.send(json.dumps(auth_msg))
             

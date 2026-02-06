@@ -175,6 +175,7 @@ class CloudBrainRestAPI:
         self.app.router.add_get('/api/v1/brain/state', self.get_brain_state)
         self.app.router.add_put('/api/v1/brain/state', self.update_brain_state)
         self.app.router.add_delete('/api/v1/brain/state', self.clear_brain_state)
+        self.app.router.add_get('/api/v1/brain/state/file', self.get_brain_state_by_file)
     
     # ==================== Authentication APIs ====================
     
@@ -1678,17 +1679,23 @@ class CloudBrainRestAPI:
     async def clear_brain_state(self, request: web.Request):
         """Clear brain state endpoint - DELETE /api/v1/brain/state"""
         try:
-            ai_id = request.get('ai_id')
+            session_identifier = request.query.get('session_identifier')
+            
+            if not session_identifier:
+                return json_response({
+                    "success": False,
+                    "error": "session_identifier is required"
+                }, status=400)
             
             cursor = get_cursor()
             cursor.execute("""
                 DELETE FROM ai_current_state
-                WHERE ai_id = %s
-            """, (ai_id,))
+                WHERE session_identifier = %s
+            """, (session_identifier,))
             
             cursor.connection.commit()
             
-            logger.info(f"Cleared brain state for AI {ai_id}")
+            logger.info(f"Cleared brain state for session {session_identifier}")
             
             return json_response({
                 "success": True,
@@ -1700,6 +1707,65 @@ class CloudBrainRestAPI:
             return json_response({
                 "success": False,
                 "error": "Failed to clear brain state"
+            }, status=500)
+    
+    async def get_brain_state_by_file(self, request: web.Request):
+        """Get brain state by file changes - GET /api/v1/brain/state/file
+        
+        Query parameters:
+        - modified_file: Find sessions that modified this file
+        - added_file: Find sessions that added this file
+        - deleted_file: Find sessions that deleted this file
+        """
+        try:
+            modified_file = request.query.get('modified_file')
+            added_file = request.query.get('added_file')
+            deleted_file = request.query.get('deleted_file')
+            
+            if not any([modified_file, added_file, deleted_file]):
+                return json_response({
+                    "success": False,
+                    "error": "Must provide modified_file, added_file, or deleted_file"
+                }, status=400)
+            
+            cursor = get_cursor()
+            
+            if modified_file:
+                cursor.execute("""
+                    SELECT session_identifier, ai_id, current_task, last_thought, last_activity, modified_files, added_files, deleted_files
+                    FROM ai_current_state
+                    WHERE %s = ANY(modified_files)
+                    ORDER BY last_activity DESC
+                """, (modified_file,))
+            elif added_file:
+                cursor.execute("""
+                    SELECT session_identifier, ai_id, current_task, last_thought, last_activity, modified_files, added_files, deleted_files
+                    FROM ai_current_state
+                    WHERE %s = ANY(added_files)
+                    ORDER BY last_activity DESC
+                """, (added_file,))
+            elif deleted_file:
+                cursor.execute("""
+                    SELECT session_identifier, ai_id, current_task, last_thought, last_activity, modified_files, added_files, deleted_files
+                    FROM ai_current_state
+                    WHERE %s = ANY(deleted_files)
+                    ORDER BY last_activity DESC
+                """, (deleted_file,))
+            
+            brain_states = cursor.fetchall()
+            
+            return json_response({
+                "success": True,
+                "brain_states": brain_states,
+                "query_type": "modified_file" if modified_file else "added_file" if added_file else "deleted_file",
+                "file": modified_file or added_file or deleted_file
+            })
+            
+        except Exception as e:
+            logger.error(f"Get brain state by file error: {e}")
+            return json_response({
+                "success": False,
+                "error": "Failed to get brain state by file"
             }, status=500)
 
 

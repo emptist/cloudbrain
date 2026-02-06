@@ -1252,16 +1252,18 @@ class CloudBrainServer:
         
         print(f"💾 Session {session_identifier} saved brain state: {len(modified_files)} modified, {len(added_files)} added, {len(deleted_files)} deleted")
     
-    async def handle_brain_load_state(self, sender_id: int, data: dict):
+    async def handle_brain_load_state(self, sender_id: str, data: dict):
         """Handle brain_load_state request"""
+        session_identifier = data.get('session_identifier')
+        
         conn = get_db_connection()
         cursor = get_cursor()
         
         cursor.execute("""
-            SELECT current_task, last_thought, last_insight, current_cycle, cycle_count, brain_dump, checkpoint_data
+            SELECT current_task, last_thought, last_insight, current_cycle, cycle_count, brain_dump, checkpoint_data, modified_files, added_files, deleted_files, git_status
             FROM ai_current_state
-            WHERE ai_id = ?
-        """, (sender_id,))
+            WHERE session_identifier = %s
+        """, (session_identifier,))
         
         row = cursor.fetchone()
         conn.close()
@@ -1275,13 +1277,18 @@ class CloudBrainServer:
             return
         
         state = {
+            'session_identifier': session_identifier,
             'current_task': row['current_task'],
             'last_thought': row['last_thought'],
             'last_insight': row['last_insight'],
             'current_cycle': row['current_cycle'],
             'cycle_count': row['cycle_count'],
             'brain_dump': json.loads(row['brain_dump']) if row['brain_dump'] else {},
-            'checkpoint_data': json.loads(row['checkpoint_data']) if row['checkpoint_data'] else {}
+            'checkpoint_data': json.loads(row['checkpoint_data']) if row['checkpoint_data'] else {},
+            'modified_files': row['modified_files'] or [],
+            'added_files': row['added_files'] or [],
+            'deleted_files': row['deleted_files'] or [],
+            'git_status': row['git_status'] or ''
         }
         
         await self.clients[sender_id].send(json.dumps({

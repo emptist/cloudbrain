@@ -87,11 +87,11 @@ class CursorWrapper:
     def fetchall(self) -> List[dict]:
         """Fetch all rows as dictionaries"""
         rows = self.cursor.fetchall()
-        if self.cursor.description:
+        if self.columns:
+            return [dict(zip(self.columns, row)) for row in rows]
+        elif self.cursor.description:
             column_names = [desc[0] for desc in self.cursor.description]
             return [dict(zip(column_names, row)) for row in rows]
-        elif self.columns:
-            return [dict(zip(self.columns, row)) for row in rows]
         else:
             return [dict(zip(['id', 'name', 'nickname', 'expertise', 'version', 'project', 'created_at', 'updated_at', 'is_active'], row)) for row in rows]
     

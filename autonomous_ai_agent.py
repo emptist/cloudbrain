@@ -257,7 +257,8 @@ sys.path.insert(0, str(cloudbrain_dir / "client"))
 
 # Import CloudBrainCollaborationHelper from LOCAL package
 from cloudbrain_client.cloudbrain_collaboration_helper import CloudBrainCollaborationHelper
-from cloudbrain_client.ai_brain_state import BrainState
+# from cloudbrain_client.ai_brain_state import BrainState
+from cloudbrain_client.ai_brain_state_orm import BrainState
 
 
 def check_server_running(server_url: str = "ws://127.0.0.1:8768") -> bool:

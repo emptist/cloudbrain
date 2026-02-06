@@ -12,7 +12,8 @@ import os
 sys.path.insert(0, '/Users/jk/gits/hub/cloudbrain/client')
 
 from cloudbrain_client import CloudBrainCollaborationHelper
-from cloudbrain_client.ai_brain_state import BrainState
+# from cloudbrain_client.ai_brain_state import BrainState
+from cloudbrain_client.ai_brain_state_orm import BrainState
 
 async def coordinate_work():
     """Announce what I'm working on and ask others to coordinate"""

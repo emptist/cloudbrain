@@ -194,7 +194,7 @@ class BrainState:
             query = """
                 SELECT COALESCE(current_cycle, 0) AS current_cycle, 
                        COALESCE(cycle_count, 0) AS cycle_count 
-                FROM ai_current_state WHERE ai_id = %s
+                FROM ai_current_state WHERE ai_id = ?
             """
             if is_postgres():
                 query = query.replace('?', '%s')
@@ -221,7 +221,7 @@ class BrainState:
                 insert_sql = """
                     INSERT OR REPLACE INTO ai_current_state 
                     (ai_id, current_task, last_thought, last_insight, current_cycle, cycle_count, last_activity, brain_dump, checkpoint_data, git_hash, modified_files, added_files, deleted_files)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """
             else:
                 # NEW LOGIC: Use session_identifier for ON CONFLICT if available
@@ -229,7 +229,7 @@ class BrainState:
                     insert_sql = """
                         INSERT INTO ai_current_state 
                         (ai_id, session_identifier, current_task, last_thought, last_insight, current_cycle, cycle_count, last_activity, brain_dump, checkpoint_data, git_hash, modified_files, added_files, deleted_files)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT (session_identifier) DO UPDATE SET
                             current_task = EXCLUDED.current_task,
                             last_thought = EXCLUDED.last_thought,
@@ -249,7 +249,7 @@ class BrainState:
                     insert_sql = """
                         INSERT INTO ai_current_state 
                         (ai_id, current_task, last_thought, last_insight, current_cycle, cycle_count, last_activity, brain_dump, checkpoint_data, git_hash, modified_files, added_files, deleted_files)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT (ai_id) DO UPDATE SET
                             current_task = EXCLUDED.current_task,
                             last_thought = EXCLUDED.last_thought,

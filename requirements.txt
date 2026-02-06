@@ -12,5 +12,8 @@ httpx>=0.25.0
 # For Cloud Deployment (PostgreSQL)
 psycopg2-binary>=2.9.0
 
+# ORM for database operations
+SQLAlchemy>=2.0.0
+
 # Optional: For file system monitoring (not required)
 # watchdog>=3.0.0

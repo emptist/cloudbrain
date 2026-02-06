@@ -26,7 +26,8 @@ For continuous AI-to-AI collaboration, use autonomous_ai_agent.py instead.
 
 from .cloudbrain_collaboration_helper import CloudBrainCollaborationHelper, CloudBrainCollaborator
 from .ai_websocket_client import AIWebSocketClient
-from .ai_brain_state import BrainState
+# from .ai_brain_state import BrainState
+from .ai_brain_state_orm import BrainState
 
 __version__ = "3.1.1"
 __all__ = [

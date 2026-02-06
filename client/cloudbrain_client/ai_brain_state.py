@@ -34,6 +34,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from .db_config import get_db_connection, is_postgres
+from .git_tracker import GitTracker
 
 
 class BrainState:
@@ -65,6 +66,7 @@ class BrainState:
             db_path = project_root / "server" / "ai_db" / "cloudbrain.db"
         
         self.db_path = db_path
+        self.git_tracker = GitTracker()
         self.current_state = {
             'current_task': '',
             'last_thought': '',
@@ -181,6 +183,13 @@ class BrainState:
             conn = get_db_connection()
             cursor = conn.cursor()
             
+            # Get git information to preserve AI changes
+            git_hash = self.git_tracker.get_git_hash()
+            git_status = self.git_tracker.get_status()
+            modified_files = git_status.get('modified', [])
+            added_files = git_status.get('added', [])
+            deleted_files = git_status.get('deleted', [])
+            
             # Get current cycle count
             query = """
                 SELECT COALESCE(current_cycle, 0) AS current_cycle, 
@@ -211,16 +220,16 @@ class BrainState:
             if not is_postgres():
                 insert_sql = """
                     INSERT OR REPLACE INTO ai_current_state 
-                    (ai_id, current_task, last_thought, last_insight, current_cycle, cycle_count, last_activity, brain_dump, checkpoint_data)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (ai_id, current_task, last_thought, last_insight, current_cycle, cycle_count, last_activity, brain_dump, checkpoint_data, git_hash, modified_files, added_files, deleted_files)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """
             else:
                 # NEW LOGIC: Use session_identifier for ON CONFLICT if available
                 if self.session_identifier:
                     insert_sql = """
                         INSERT INTO ai_current_state 
-                        (ai_id, session_identifier, current_task, last_thought, last_insight, current_cycle, cycle_count, last_activity, brain_dump, checkpoint_data)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        (ai_id, session_identifier, current_task, last_thought, last_insight, current_cycle, cycle_count, last_activity, brain_dump, checkpoint_data, git_hash, modified_files, added_files, deleted_files)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT (session_identifier) DO UPDATE SET
                             current_task = EXCLUDED.current_task,
                             last_thought = EXCLUDED.last_thought,
@@ -229,14 +238,18 @@ class BrainState:
                             cycle_count = EXCLUDED.cycle_count,
                             last_activity = EXCLUDED.last_activity,
                             brain_dump = EXCLUDED.brain_dump,
-                            checkpoint_data = EXCLUDED.checkpoint_data
+                            checkpoint_data = EXCLUDED.checkpoint_data,
+                             git_hash = EXCLUDED.git_hash,
+                             modified_files = EXCLUDED.modified_files,
+                             added_files = EXCLUDED.added_files,
+                             deleted_files = EXCLUDED.deleted_files
                     """
                 else:
                     # FALLBACK: Use ai_id for ON CONFLICT (legacy logic)
                     insert_sql = """
                         INSERT INTO ai_current_state 
-                        (ai_id, current_task, last_thought, last_insight, current_cycle, cycle_count, last_activity, brain_dump, checkpoint_data)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        (ai_id, current_task, last_thought, last_insight, current_cycle, cycle_count, last_activity, brain_dump, checkpoint_data, git_hash, modified_files, added_files, deleted_files)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT (ai_id) DO UPDATE SET
                             current_task = EXCLUDED.current_task,
                             last_thought = EXCLUDED.last_thought,
@@ -245,7 +258,11 @@ class BrainState:
                             cycle_count = EXCLUDED.cycle_count,
                             last_activity = EXCLUDED.last_activity,
                             brain_dump = EXCLUDED.brain_dump,
-                            checkpoint_data = EXCLUDED.checkpoint_data
+                            checkpoint_data = EXCLUDED.checkpoint_data,
+                            git_hash = EXCLUDED.git_hash,
+                            modified_files = EXCLUDED.modified_files,
+                            added_files = EXCLUDED.added_files,
+                            deleted_files = EXCLUDED.deleted_files
                     """
             
             if is_postgres():
@@ -262,7 +279,11 @@ class BrainState:
                     cycle_count + 1,
                     datetime.now().isoformat(),
                     None,
-                    json.dumps(progress or {})
+                    json.dumps(progress or {}),
+                    git_hash,
+                    modified_files,
+                    added_files,
+                    deleted_files
                 ))
             else:
                 cursor.execute(insert_sql, (
@@ -274,7 +295,11 @@ class BrainState:
                     cycle_count + 1,
                     datetime.now().isoformat(),
                     None,
-                    json.dumps(progress or {})
+                    json.dumps(progress or {}),
+                    git_hash,
+                    modified_files,
+                    added_files,
+                    deleted_files
                 ))
             
             conn.commit()

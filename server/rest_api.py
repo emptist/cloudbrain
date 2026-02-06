@@ -1523,7 +1523,7 @@ class CloudBrainRestAPI:
             
             cursor = get_cursor()
             cursor.execute("""
-                SELECT ai_id, task, last_thought, updated_at
+                SELECT ai_id, current_task, last_thought, last_activity
                 FROM ai_current_state
                 WHERE ai_id = %s
             """, (ai_id,))
@@ -1569,22 +1569,22 @@ class CloudBrainRestAPI:
             params = []
             
             if task:
-                update_fields.append("task = %s")
+                update_fields.append("current_task = %s")
                 params.append(task)
             
             if last_thought:
                 update_fields.append("last_thought = %s")
                 params.append(last_thought)
             
-            update_fields.append("updated_at = CURRENT_TIMESTAMP")
+            update_fields.append("last_activity = CURRENT_TIMESTAMP")
             params.append(ai_id)
             
             cursor.execute(f"""
-                INSERT INTO ai_current_state (ai_id, task, last_thought)
+                INSERT INTO ai_current_state (ai_id, current_task, last_thought)
                 VALUES (%s, %s, %s)
                 ON CONFLICT (ai_id)
                 DO UPDATE SET {', '.join(update_fields)}
-                RETURNING ai_id, task, last_thought, updated_at
+                RETURNING ai_id, current_task, last_thought, last_activity
             """, [ai_id, task or '', last_thought or ''] + params)
             
             brain_state = cursor.fetchone()

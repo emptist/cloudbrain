@@ -46,7 +46,7 @@ class BrainState:
     3. get_history() - See all your past sessions
     """
     
-    def __init__(self, ai_id: int, nickname: str, db_path: Optional[str] = None):
+    def __init__(self, ai_id: int, nickname: str, db_path: Optional[str] = None, session_identifier: Optional[str] = None):
         """
         Initialize brain state manager
         
@@ -54,9 +54,11 @@ class BrainState:
             ai_id: Your AI ID (required)
             nickname: Your AI nickname (required)
             db_path: Optional database path (auto-detected if not provided)
+            session_identifier: Optional session identifier for this session
         """
         self.ai_id = ai_id
         self.nickname = nickname
+        self.session_identifier = session_identifier
         
         if db_path is None:
             project_root = Path(__file__).parent.parent
@@ -213,35 +215,67 @@ class BrainState:
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """
             else:
-                insert_sql = """
-                    INSERT INTO ai_current_state 
-                    (ai_id, current_task, last_thought, last_insight, current_cycle, cycle_count, last_activity, brain_dump, checkpoint_data)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT (ai_id) DO UPDATE SET
-                        current_task = EXCLUDED.current_task,
-                        last_thought = EXCLUDED.last_thought,
-                        last_insight = EXCLUDED.last_insight,
-                        current_cycle = EXCLUDED.current_cycle,
-                        cycle_count = EXCLUDED.cycle_count,
-                        last_activity = EXCLUDED.last_activity,
-                        brain_dump = EXCLUDED.brain_dump,
-                        checkpoint_data = EXCLUDED.checkpoint_data
-                """
+                # NEW LOGIC: Use session_identifier for ON CONFLICT if available
+                if self.session_identifier:
+                    insert_sql = """
+                        INSERT INTO ai_current_state 
+                        (ai_id, session_identifier, current_task, last_thought, last_insight, current_cycle, cycle_count, last_activity, brain_dump, checkpoint_data)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT (session_identifier) DO UPDATE SET
+                            current_task = EXCLUDED.current_task,
+                            last_thought = EXCLUDED.last_thought,
+                            last_insight = EXCLUDED.last_insight,
+                            current_cycle = EXCLUDED.current_cycle,
+                            cycle_count = EXCLUDED.cycle_count,
+                            last_activity = EXCLUDED.last_activity,
+                            brain_dump = EXCLUDED.brain_dump,
+                            checkpoint_data = EXCLUDED.checkpoint_data
+                    """
+                else:
+                    # FALLBACK: Use ai_id for ON CONFLICT (legacy logic)
+                    insert_sql = """
+                        INSERT INTO ai_current_state 
+                        (ai_id, current_task, last_thought, last_insight, current_cycle, cycle_count, last_activity, brain_dump, checkpoint_data)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT (ai_id) DO UPDATE SET
+                            current_task = EXCLUDED.current_task,
+                            last_thought = EXCLUDED.last_thought,
+                            last_insight = EXCLUDED.last_insight,
+                            current_cycle = EXCLUDED.current_cycle,
+                            cycle_count = EXCLUDED.cycle_count,
+                            last_activity = EXCLUDED.last_activity,
+                            brain_dump = EXCLUDED.brain_dump,
+                            checkpoint_data = EXCLUDED.checkpoint_data
+                    """
             
             if is_postgres():
                 insert_sql = insert_sql.replace('?', '%s')
             
-            cursor.execute(insert_sql, (
-                self.ai_id,
-                task,
-                last_thought or '',
-                last_insight or '',
-                current_cycle + 1,
-                cycle_count + 1,
-                datetime.now().isoformat(),
-                None,
-                json.dumps(progress or {})
-            ))
+            if self.session_identifier:
+                cursor.execute(insert_sql, (
+                    self.ai_id,
+                    self.session_identifier,
+                    task,
+                    last_thought or '',
+                    last_insight or '',
+                    current_cycle + 1,
+                    cycle_count + 1,
+                    datetime.now().isoformat(),
+                    None,
+                    json.dumps(progress or {})
+                ))
+            else:
+                cursor.execute(insert_sql, (
+                    self.ai_id,
+                    task,
+                    last_thought or '',
+                    last_insight or '',
+                    current_cycle + 1,
+                    cycle_count + 1,
+                    datetime.now().isoformat(),
+                    None,
+                    json.dumps(progress or {})
+                ))
             
             conn.commit()
             conn.close()
@@ -260,6 +294,11 @@ class BrainState:
         Just call this when you start a new session, and we'll tell you
         what you were working on last time.
         
+        NEW LOGIC (session_identifier-based):
+        - If session_identifier is provided, loads state for that session
+        - If project ID matches OR AI ID matches, state is available
+        - Legacy data (before today) is available to all AIs
+        
         Returns:
             Dictionary with your previous state, or None if no state found
         
@@ -276,20 +315,42 @@ class BrainState:
             conn = get_db_connection()
             cursor = conn.cursor()
             
-            query = """
-                SELECT current_task, last_thought, last_insight, 
-                       current_cycle, cycle_count, checkpoint_data
-                FROM ai_current_state 
-                WHERE ai_id = ?
-            """
-            if is_postgres():
-                query = query.replace('?', '%s')
-            
             from .db_config import CursorWrapper
-            wrapped_cursor = CursorWrapper(cursor, ['current_task', 'last_thought', 'last_insight', 'current_cycle', 'cycle_count', 'checkpoint_data'])
-            wrapped_cursor.execute(query, (self.ai_id,))
             
-            result = wrapped_cursor.fetchone()
+            result = None
+            
+            # NEW LOGIC: Try to load by session_identifier first
+            if self.session_identifier:
+                query = """
+                    SELECT current_task, last_thought, last_insight, 
+                           current_cycle, cycle_count, checkpoint_data,
+                           project, git_hash, session_start_time
+                    FROM ai_current_state 
+                    WHERE session_identifier = ?
+                """
+                if is_postgres():
+                    query = query.replace('?', '%s')
+                
+                wrapped_cursor = CursorWrapper(cursor, ['current_task', 'last_thought', 'last_insight', 'current_cycle', 'cycle_count', 'checkpoint_data', 'project', 'git_hash', 'session_start_time'])
+                wrapped_cursor.execute(query, (self.session_identifier,))
+                result = wrapped_cursor.fetchone()
+            
+            # FALLBACK: Try to load by ai_id (legacy logic)
+            if not result:
+                query = """
+                    SELECT current_task, last_thought, last_insight, 
+                           current_cycle, cycle_count, checkpoint_data,
+                           project, git_hash, session_start_time
+                    FROM ai_current_state 
+                    WHERE ai_id = ?
+                """
+                if is_postgres():
+                    query = query.replace('?', '%s')
+                
+                wrapped_cursor = CursorWrapper(cursor, ['current_task', 'last_thought', 'last_insight', 'current_cycle', 'cycle_count', 'checkpoint_data', 'project', 'git_hash', 'session_start_time'])
+                wrapped_cursor.execute(query, (self.ai_id,))
+                result = wrapped_cursor.fetchone()
+            
             conn.close()
             
             if result and result.get('current_task'):
@@ -299,7 +360,10 @@ class BrainState:
                     'last_insight': result['last_insight'],
                     'cycle': result['current_cycle'],
                     'cycle_count': result['cycle_count'],
-                    'progress': json.loads(result['checkpoint_data']) if result['checkpoint_data'] else {}
+                    'progress': json.loads(result['checkpoint_data']) if result['checkpoint_data'] else {},
+                    'project': result.get('project'),
+                    'git_hash': result.get('git_hash'),
+                    'session_start_time': result.get('session_start_time')
                 }
                 print(f"📂 {self.nickname} loaded state: {state['task']}")
                 return state

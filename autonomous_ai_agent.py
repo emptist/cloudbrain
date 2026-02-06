@@ -498,10 +498,16 @@ class AutonomousAIAgent:
                 self.brain_state = None
             
             if self.brain_state is None:
+                # Get session_identifier from helper if available
+                session_identifier = None
+                if hasattr(self.helper, 'client') and hasattr(self.helper.client, 'session_identifier'):
+                    session_identifier = self.helper.client.session_identifier
+                
                 self.brain_state = BrainState(
                     ai_id=self.ai_id,
                     nickname=self.ai_name,
-                    db_path=None
+                    db_path=None,
+                    session_identifier=session_identifier
                 )
                 print("✅ Brain state manager initialized")
         except Exception as e:

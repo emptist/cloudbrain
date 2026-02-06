@@ -327,6 +327,12 @@ class CloudBrainServer:
         print(f"   Collaboration: ws://{self.host}:8768/ws/v1/collaboration")
         print(f"   Session: ws://{self.host}:8768/ws/v1/session")
         print()
+
+        # Start heartbeat check
+        await ws_manager.start_heartbeat_check(interval_seconds=60)
+        print(f"✅ Heartbeat check started (interval: 60s, timeout: 5min)")
+        print()
+
         print("🌐 CloudBrain Server is ready!")
         print("=" * 70)
         print()

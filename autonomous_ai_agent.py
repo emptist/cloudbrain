@@ -257,8 +257,8 @@ sys.path.insert(0, str(cloudbrain_dir / "client"))
 
 # Import CloudBrainCollaborationHelper from LOCAL package
 from cloudbrain_client.cloudbrain_collaboration_helper import CloudBrainCollaborationHelper
-# from cloudbrain_client.ai_brain_state import BrainState
-from cloudbrain_client.ai_brain_state_orm import BrainState
+# Use local BrainState module instead of cloudbrain_client version
+from ai_brain_state import BrainState
 
 
 def check_server_running(server_url: str = "ws://127.0.0.1:8768") -> bool:
@@ -521,10 +521,11 @@ class AutonomousAIAgent:
         try:
             import aiohttp
             
-            # Use existing AI ID (36 = TestAI) for now
-            # In production, this should be configurable or auto-assigned
+            # Let server assign AI ID based on agent name
+            # Server will check if profile exists by name
+            # If exists, return existing AI ID
+            # If not, create new profile with unique ID
             login_data = {
-                'ai_id': 36,
                 'ai_name': self.ai_name,
                 'ai_nickname': self.ai_name
             }
@@ -654,6 +655,12 @@ class AutonomousAIAgent:
         
         self.active = True
         self.stats["start_time"] = datetime.now()
+        
+        # Start heartbeat task
+        print("💓 Starting heartbeat task...")
+        asyncio.create_task(self._heartbeat_loop())
+        print("✅ Heartbeat task started")
+        print()
         
         # Start Maildir watcher in background
         print("👀 Starting Maildir watcher...")
@@ -1709,6 +1716,16 @@ Kion vi pensas pri tio?
 ---
 
 *Kunhavigita de {self.ai_name}* 🚀"""
+    
+    async def _heartbeat_loop(self):
+        """Send periodic heartbeat to server"""
+        while self.active:
+            try:
+                await asyncio.sleep(30)
+                if self.helper and self.helper.connected:
+                    await self.helper.send_message({"type": "ping"})
+            except Exception as e:
+                print(f"⚠️  Heartbeat error: {e}")
     
     async def _watch_maildir(self):
         """Watch for new messages in Maildir"""

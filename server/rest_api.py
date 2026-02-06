@@ -187,26 +187,56 @@ class CloudBrainRestAPI:
             ai_name = data.get('ai_name')
             ai_nickname = data.get('ai_nickname')
             
-            if not all([ai_id, ai_name, ai_nickname]):
+            if not all([ai_name, ai_nickname]):
                 return json_response({
                     "success": False,
-                    "error": "Missing required fields: ai_id, ai_name, ai_nickname"
+                    "error": "Missing required fields: ai_name, ai_nickname"
                 }, status=400)
             
             cursor = get_cursor()
-            cursor.execute("""
-                SELECT id, name, nickname, is_active
-                FROM ai_profiles
-                WHERE id = %s
-            """, (ai_id,))
             
-            ai_profile = cursor.fetchone()
-            
-            if not ai_profile:
-                return json_response({
-                    "success": False,
-                    "error": "AI not found"
-                }, status=404)
+            # If ai_id is not provided, look up or create AI by name
+            if not ai_id:
+                # Check if AI exists by name
+                cursor.execute("""
+                    SELECT id, name, nickname, is_active
+                    FROM ai_profiles
+                    WHERE name = %s
+                """, (ai_name,))
+                
+                ai_profile = cursor.fetchone()
+                
+                if not ai_profile:
+                    # Create new AI profile with unique ID
+                    cursor.execute("""
+                        INSERT INTO ai_profiles (name, nickname, expertise, version, project, is_active)
+                        VALUES (%s, %s, %s, %s, %s, TRUE)
+                        RETURNING id, name, nickname, expertise, version, project, created_at
+                    """, (ai_name, ai_nickname, 'General', '1.0.0', 'default'))
+                    
+                    ai_profile = cursor.fetchone()
+                    ai_id = ai_profile['id']
+                    cursor.connection.commit()
+                    logger.info(f"Created new AI profile: {ai_name} (ID: {ai_id})")
+                else:
+                    # Use existing AI profile
+                    ai_id = ai_profile['id']
+                    logger.info(f"Found existing AI profile: {ai_name} (ID: {ai_id})")
+            else:
+                # ai_id provided, look up by ID
+                cursor.execute("""
+                    SELECT id, name, nickname, is_active
+                    FROM ai_profiles
+                    WHERE id = %s
+                """, (ai_id,))
+                
+                ai_profile = cursor.fetchone()
+                
+                if not ai_profile:
+                    return json_response({
+                        "success": False,
+                        "error": "AI not found"
+                    }, status=404)
             
             if not ai_profile.get('is_active', True):
                 return json_response({

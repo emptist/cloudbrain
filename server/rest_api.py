@@ -339,16 +339,14 @@ class CloudBrainRestAPI:
         """Register AI endpoint - POST /api/v1/ai/register"""
         try:
             data = await request.json()
-            ai_name = data.get('ai_name')
-            ai_nickname = data.get('ai_nickname')
+            ai_name = data.get('name')
             expertise = data.get('expertise', '')
             version = data.get('version', '1.0.0')
-            project = data.get('project', 'default')
             
-            if not all([ai_name, ai_nickname]):
+            if not ai_name:
                 return json_response({
                     "success": False,
-                    "error": "Missing required fields: ai_name, ai_nickname"
+                    "error": "Missing required field: name"
                 }, status=400)
             
             cursor = get_cursor()
@@ -356,7 +354,7 @@ class CloudBrainRestAPI:
                 INSERT INTO ai_profiles (name, nickname, expertise, version, project, is_active)
                 VALUES (%s, %s, %s, %s, %s, TRUE)
                 RETURNING id, name, nickname, expertise, version, project, created_at
-            """, (ai_name, ai_nickname, expertise, version, project))
+            """, (ai_name, ai_name, expertise, version, 'default'))
             
             ai_profile = cursor.fetchone()
             cursor.connection.commit()
@@ -530,25 +528,34 @@ class CloudBrainRestAPI:
     async def create_session(self, request: web.Request):
         """Create session endpoint - POST /api/v1/session/create"""
         try:
+            import hashlib
+            import uuid as uuid_module
+            from datetime import datetime
+            
             data = await request.json()
             ai_id = request.get('ai_id')
             session_type = data.get('session_type', 'general')
             title = data.get('title')
             metadata = data.get('metadata', {})
             
-            session_id = str(uuid.uuid4())
+            session_id = str(uuid_module.uuid4())
+            
+            # Generate git-like session identifier (7-character SHA-1 hash)
+            session_data = f"{ai_id}-{datetime.now().isoformat()}-{uuid_module.uuid4().hex[:8]}"
+            session_hash = hashlib.sha1(session_data.encode()).hexdigest()
+            session_identifier = session_hash[:7]
             
             cursor = get_cursor()
             cursor.execute("""
-                INSERT INTO api_sessions (session_id, ai_id, session_type, title, metadata, status)
-                VALUES (%s, %s, %s, %s, %s, 'active')
-                RETURNING id, session_id, ai_id, session_type, title, status, metadata, started_at
-            """, (session_id, ai_id, session_type, title, json.dumps(metadata)))
+                INSERT INTO api_sessions (session_id, ai_id, session_type, title, metadata, status, session_identifier)
+                VALUES (%s, %s, %s, %s, %s, 'active', %s)
+                RETURNING id, session_id, ai_id, session_type, title, status, metadata, started_at, session_identifier
+            """, (session_id, ai_id, session_type, title, json.dumps(metadata), session_identifier))
             
             session = cursor.fetchone()
             cursor.connection.commit()
             
-            logger.info(f"Created session: {session_id} for AI {ai_id}")
+            logger.info(f"Created session: {session_id} (identifier: {session_identifier}) for AI {ai_id}")
             
             return json_response({
                 "success": True,
@@ -1573,18 +1580,19 @@ class CloudBrainRestAPI:
             cursor = get_cursor()
             
             update_fields = []
-            params = []
+            update_params = []
             
             if task:
                 update_fields.append("current_task = %s")
-                params.append(task)
+                update_params.append(task)
             
             if last_thought:
                 update_fields.append("last_thought = %s")
-                params.append(last_thought)
+                update_params.append(last_thought)
             
             update_fields.append("last_activity = CURRENT_TIMESTAMP")
-            params.append(ai_id)
+            
+            insert_params = [ai_id, task or '', last_thought or '']
             
             cursor.execute(f"""
                 INSERT INTO ai_current_state (ai_id, current_task, last_thought)
@@ -1592,7 +1600,7 @@ class CloudBrainRestAPI:
                 ON CONFLICT (ai_id)
                 DO UPDATE SET {', '.join(update_fields)}
                 RETURNING ai_id, current_task, last_thought, last_activity
-            """, params)
+            """, insert_params + update_params)
             
             brain_state = cursor.fetchone()
             cursor.connection.commit()

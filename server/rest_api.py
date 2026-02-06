@@ -1531,16 +1531,47 @@ class CloudBrainRestAPI:
     # ==================== Brain State APIs ====================
     
     async def get_brain_state(self, request: web.Request):
-        """Get brain state endpoint - GET /api/v1/brain/state"""
+        """Get brain state endpoint - GET /api/v1/brain/state
+        
+        Query parameters:
+        - session_identifier: Get current session state
+        - project_id: Get latest state for project
+        - git_hash: Get state for specific git hash
+        """
         try:
-            ai_id = request.get('ai_id')
+            session_identifier = request.query.get('session_identifier')
+            project_id = request.query.get('project_id')
+            git_hash = request.query.get('git_hash')
             
             cursor = get_cursor()
-            cursor.execute("""
-                SELECT ai_id, current_task, last_thought, last_activity
-                FROM ai_current_state
-                WHERE ai_id = %s
-            """, (ai_id,))
+            
+            if session_identifier:
+                cursor.execute("""
+                    SELECT ai_id, current_task, last_thought, last_activity, project, git_hash
+                    FROM ai_current_state
+                    WHERE session_identifier = %s
+                """, (session_identifier,))
+            elif project_id:
+                cursor.execute("""
+                    SELECT ai_id, current_task, last_thought, last_activity, project, git_hash
+                    FROM ai_current_state
+                    WHERE project = %s
+                    ORDER BY last_activity DESC
+                    LIMIT 1
+                """, (project_id,))
+            elif git_hash:
+                cursor.execute("""
+                    SELECT ai_id, current_task, last_thought, last_activity, project, git_hash
+                    FROM ai_current_state
+                    WHERE git_hash = %s
+                    ORDER BY last_activity DESC
+                    LIMIT 1
+                """, (git_hash,))
+            else:
+                return json_response({
+                    "success": False,
+                    "error": "Must provide session_identifier, project_id, or git_hash"
+                }, status=400)
             
             brain_state = cursor.fetchone()
             
@@ -1564,12 +1595,28 @@ class CloudBrainRestAPI:
             }, status=500)
     
     async def update_brain_state(self, request: web.Request):
-        """Update brain state endpoint - PUT /api/v1/brain/state"""
+        """Update brain state endpoint - PUT /api/v1/brain/state
+        
+        Body parameters:
+        - session_identifier: Required - which session to update
+        - task: Optional - current task
+        - last_thought: Optional - last thought
+        - project_id: Optional - project context
+        - git_hash: Optional - git hash for version tracking
+        """
         try:
-            ai_id = request.get('ai_id')
+            session_identifier = request.get('session_identifier')
             data = await request.json()
             task = data.get('task')
             last_thought = data.get('last_thought')
+            project_id = data.get('project_id')
+            git_hash = data.get('git_hash')
+            
+            if not session_identifier:
+                return json_response({
+                    "success": False,
+                    "error": "session_identifier is required"
+                }, status=400)
             
             if not task and not last_thought:
                 return json_response({
@@ -1590,16 +1637,25 @@ class CloudBrainRestAPI:
                 update_fields.append("last_thought = %s")
                 update_params.append(last_thought)
             
-            update_fields.append("last_activity = CURRENT_TIMESTAMP")
+            if project_id:
+                update_fields.append("project = %s")
+                update_params.append(project_id)
             
-            insert_params = [ai_id, task or '', last_thought or '']
+            if git_hash:
+                update_fields.append("git_hash = %s")
+                update_params.append(git_hash)
+            
+            update_fields.append("last_activity = CURRENT_TIMESTAMP")
+            update_params.append(session_identifier)
+            
+            insert_params = [session_identifier, task or '', last_thought or '', project_id or '', git_hash or '']
             
             cursor.execute(f"""
-                INSERT INTO ai_current_state (ai_id, current_task, last_thought)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (ai_id)
+                INSERT INTO ai_current_state (session_identifier, current_task, last_thought, project, git_hash)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (session_identifier)
                 DO UPDATE SET {', '.join(update_fields)}
-                RETURNING ai_id, current_task, last_thought, last_activity
+                RETURNING session_identifier, current_task, last_thought, last_activity, project, git_hash
             """, insert_params + update_params)
             
             brain_state = cursor.fetchone()

@@ -58,8 +58,8 @@ logs/
 .gcp-credentials/
 
 # Deprecated folders (keep locally, don't track)
-deprecated/
-deprecated_clients/
+deprecated
+deprecated_clients
 
 # Package build artifacts
 packages/*/dist/
@@ -74,7 +74,7 @@ client/*.egg-info/
 .coverage
 htmlcov/
 # Maildir runtime files
+mailboxes
 mailboxes/*/new/*
 mailboxes/*/cur/*
 mailboxes/*/NEW_MESSAGE_TRIGGER
-

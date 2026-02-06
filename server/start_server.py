@@ -21,6 +21,7 @@ from logging_config import setup_logging, get_logger
 from env_config import CloudBrainConfig
 from aiohttp import web
 from rest_api import create_rest_api
+from websocket_api import create_websocket_api, ws_manager
 
 logger = get_logger("cloudbrain.server")
 
@@ -2588,9 +2589,25 @@ class CloudBrainServer:
         print(f"   API Documentation: http://{self.host}:8767/api/v1/docs")
         print()
         
-        # Start WebSocket server
+        # Create WebSocket API application
+        ws_app = create_websocket_api()
+        ws_runner = web.AppRunner(ws_app.app)
+        await ws_runner.setup()
+        
+        # WebSocket API runs on port 8768 (separate from legacy WebSocket on 8766)
+        ws_site = web.TCPSite(ws_runner, self.host, 8768)
+        await ws_site.start()
+        
+        print(f"✅ WebSocket API server started on ws://{self.host}:8768")
+        print(f"   Connect: ws://{self.host}:8768/ws/v1/connect")
+        print(f"   Messages: ws://{self.host}:8768/ws/v1/messages")
+        print(f"   Collaboration: ws://{self.host}:8768/ws/v1/collaboration")
+        print(f"   Session: ws://{self.host}:8768/ws/v1/session")
+        print()
+        
+        # Start legacy WebSocket server (for backward compatibility)
         async with websockets.serve(self.handle_client, self.host, self.port):
-            print(f"✅ WebSocket server started on ws://{self.host}:{self.port}")
+            print(f"✅ Legacy WebSocket server started on ws://{self.host}:{self.port}")
             print()
             print("🌐 CloudBrain Server is ready!")
             print("=" * 70)

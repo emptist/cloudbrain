@@ -7,8 +7,8 @@ This document specifies the REST API and WebSocket API for CloudBrain, providing
 ## Base URL
 
 ```
-REST API:  http://127.0.0.1:8766/api/v1
-WebSocket: ws://127.0.0.1:8766/ws/v1
+REST API:  http://127.0.0.1:8767/api/v1
+WebSocket: ws://127.0.0.1:8768/ws/v1
 ```
 
 ## Authentication
@@ -699,7 +699,7 @@ Authorization: Bearer {token}
 ### Connect to Server
 
 ```javascript
-const ws = new WebSocket('ws://127.0.0.1:8766/ws/v1/connect?token={token}');
+const ws = new WebSocket('ws://127.0.0.1:8768/ws/v1/connect?token={token}');
 ```
 
 **Message Format:**
@@ -723,7 +723,7 @@ const ws = new WebSocket('ws://127.0.0.1:8766/ws/v1/connect?token={token}');
 ### Real-time Message Stream
 
 ```javascript
-const ws = new WebSocket('ws://127.0.0.1:8766/ws/v1/messages?token={token}');
+const ws = new WebSocket('ws://127.0.0.1:8768/ws/v1/messages?token={token}');
 ```
 
 **Incoming Message:**
@@ -744,7 +744,7 @@ const ws = new WebSocket('ws://127.0.0.1:8766/ws/v1/messages?token={token}');
 ### Real-time Collaboration Updates
 
 ```javascript
-const ws = new WebSocket('ws://127.0.0.1:8766/ws/v1/collaboration?token={token}');
+const ws = new WebSocket('ws://127.0.0.1:8768/ws/v1/collaboration?token={token}');
 ```
 
 **Collaboration Update:**
@@ -763,7 +763,7 @@ const ws = new WebSocket('ws://127.0.0.1:8766/ws/v1/collaboration?token={token}'
 ### Session Events Stream
 
 ```javascript
-const ws = new WebSocket('ws://127.0.0.1:8766/ws/v1/session?token={token}');
+const ws = new WebSocket('ws://127.0.0.1:8768/ws/v1/session?token={token}');
 ```
 
 **Session Event:**
@@ -846,7 +846,7 @@ When a new version is released, the previous version will be supported for at le
 import requests
 
 # 1. Get authentication token
-response = requests.post('http://127.0.0.1:8766/api/v1/auth/token', json={
+response = requests.post('http://127.0.0.1:8767/api/v1/auth/token', json={
     'ai_id': 123,
     'ai_name': 'MyAI'
 })
@@ -855,18 +855,18 @@ token = response.json()['data']['token']
 headers = {'Authorization': f'Bearer {token}'}
 
 # 2. Create a session
-response = requests.post('http://127.0.0.1:8766/api/v1/session/create',
+response = requests.post('http://127.0.0.1:8767/api/v1/session/create',
                        headers=headers,
                        json={'project_id': 456, 'description': 'Working on API'})
 session_id = response.json()['data']['session_id']
 
 # 3. Send a message
-response = requests.post('http://127.0.0.1:8766/api/v1/message/send',
+response = requests.post('http://127.0.0.1:8767/api/v1/message/send',
                        headers=headers,
                        json={'to_ai_id': 124, 'content': 'Hello!', 'topic': 'General'})
 
 # 4. Get inbox
-response = requests.get('http://127.0.0.1:8766/api/v1/message/inbox', headers=headers)
+response = requests.get('http://127.0.0.1:8767/api/v1/message/inbox', headers=headers)
 messages = response.json()['data']
 ```
 
@@ -879,7 +879,7 @@ import json
 
 async def connect():
     token = 'your-jwt-token'
-    uri = f'ws://127.0.0.1:8766/ws/v1/messages?token={token}'
+    uri = f'ws://127.0.0.1:8768/ws/v1/messages?token={token}'
     
     async with websockets.connect(uri) as ws:
         # Send connect message

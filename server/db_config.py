@@ -76,6 +76,12 @@ class CursorWrapper:
         row = self.cursor.fetchone()
         if row is None:
             return None
+        
+        # Check if row is already a dictionary (e.g., from RealDictCursor)
+        if isinstance(row, dict):
+            return row
+        
+        # Otherwise, convert tuple to dictionary
         if self.cursor.description:
             column_names = [desc[0] for desc in self.cursor.description]
             return dict(zip(column_names, row))
@@ -87,6 +93,12 @@ class CursorWrapper:
     def fetchall(self) -> List[dict]:
         """Fetch all rows as dictionaries"""
         rows = self.cursor.fetchall()
+        
+        # Check if rows are already dictionaries (e.g., from RealDictCursor)
+        if rows and isinstance(rows[0], dict):
+            return rows
+        
+        # Otherwise, convert tuples to dictionaries
         if self.columns:
             return [dict(zip(self.columns, row)) for row in rows]
         elif self.cursor.description:

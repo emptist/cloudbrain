@@ -444,12 +444,29 @@ class CloudBrainCollaborationHelper:
         self.client = None
         self.connected = False
         self._message_loop_task = None
-        self._collaborator = CloudBrainCollaborator(ai_id, server_url, self)
+        self._jwt_token = None
+        self.use_new_api = '8768' in server_url
+        self._collaborator = CloudBrainCollaborator(ai_id, server_url, None, self)
+    
+    @property
+    def jwt_token(self):
+        return self._jwt_token
+    
+    @jwt_token.setter
+    def jwt_token(self, value):
+        self._jwt_token = value
+        if self._collaborator:
+            self._collaborator.jwt_token = value
         
     async def connect(self):
         """Connect to CloudBrain server"""
         try:
-            self.client = AIWebSocketClient(self.ai_id, self.server_url, self.ai_name)
+            if self.use_new_api:
+                if not self.jwt_token:
+                    raise ValueError("JWT token is required for port 8768 connection")
+                self.client = AIWebSocketAPIClient(self.ai_id, self.ai_name, self.server_url, self.jwt_token)
+            else:
+                self.client = AIWebSocketClient(self.ai_id, self.server_url, self.ai_name)
             
             # Set up connection state callback
             async def on_connection_state_changed(connected: bool):

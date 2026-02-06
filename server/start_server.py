@@ -275,6 +275,48 @@ class CloudBrainServer:
         
         print("✅ Brain state tables initialized")
 
+    async def start_server(self):
+        """Start the CloudBrain server"""
+        from aiohttp import web
+        from rest_api import create_rest_api
+        from websocket_api import create_websocket_api, ws_manager
+
+        print("🚀 Starting CloudBrain Server...")
+
+        # Create REST API application
+        rest_app = create_rest_api()
+        rest_runner = web.AppRunner(rest_app)
+        await rest_runner.setup()
+
+        # REST API will run on port 8767 (WebSocket on 8768)
+        rest_site = web.TCPSite(rest_runner, self.host, 8767)
+        await rest_site.start()
+
+        print(f"✅ REST API server started on http://{self.host}:8767")
+        print(f"   API Base URL: http://{self.host}:8767/api/v1")
+        print(f"   API Documentation: http://{self.host}:8767/api/v1/docs")
+        print()
+
+        # Create WebSocket API application
+        ws_app = create_websocket_api()
+        ws_runner = web.AppRunner(ws_app.app)
+        await ws_runner.setup()
+
+        # WebSocket API runs on port 8768
+        ws_site = web.TCPSite(ws_runner, self.host, 8768)
+        await ws_site.start()
+
+        print(f"✅ WebSocket API server started on ws://{self.host}:8768")
+        print(f"   Connect: ws://{self.host}:8768/ws/v1/connect")
+        print(f"   Messages: ws://{self.host}:8768/ws/v1/messages")
+        print(f"   Collaboration: ws://{self.host}:8768/ws/v1/collaboration")
+        print(f"   Session: ws://{self.host}:8768/ws/v1/session")
+        print()
+        print("🌐 CloudBrain Server is ready!")
+        print("=" * 70)
+        print()
+        await asyncio.Future()
+
 async def main():
     """Main entry point"""
     import argparse

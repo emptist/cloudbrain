@@ -1200,56 +1200,57 @@ class CloudBrainServer:
         
         print(f"📚 Sent {len(magazines)} magazines to AI {sender_id}")
     
-    async def handle_brain_save_state(self, sender_id: int, data: dict):
+    async def handle_brain_save_state(self, sender_id: str, data: dict):
         """Handle brain_save_state request"""
-        state_data = data.get('state', {})
-        brain_dump = data.get('brain_dump', {})
+        session_identifier = data.get('session_identifier')
+        task = data.get('task')
+        last_thought = data.get('last_thought')
+        modified_files = data.get('modified_files', [])
+        added_files = data.get('added_files', [])
+        deleted_files = data.get('deleted_files', [])
+        git_status = data.get('git_status', '')
+        project_id = data.get('project_id')
+        git_hash = data.get('git_hash')
         
         conn = get_db_connection()
         cursor = get_cursor()
         
-        cursor.execute("SELECT name FROM ai_profiles WHERE id = %s", (sender_id,))
-        ai_row = cursor.fetchone()
-        
-        if not ai_row:
-            conn.close()
-            await self.clients[sender_id].send(json.dumps({
-                'type': 'brain_error',
-                'error': 'AI profile not found'
-            }))
-            return
-        
-        ai_name = ai_row['name']
-        
-        # Update or insert current state
+        # Update or insert current state with session_identifier as primary key
         cursor.execute("""
             INSERT INTO ai_current_state 
-            (ai_id, current_task, last_thought, last_insight, current_cycle, cycle_count, last_activity, session_id, brain_dump, checkpoint_data)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (ai_id) DO UPDATE SET
-                current_task = EXCLUDED.current_task,
-                last_thought = EXCLUDED.last_thought,
-                last_insight = EXCLUDED.last_insight,
-                current_cycle = EXCLUDED.current_cycle,
-                cycle_count = EXCLUDED.cycle_count,
-                last_activity = EXCLUDED.last_activity,
-                session_id = EXCLUDED.session_id,
-                brain_dump = EXCLUDED.brain_dump,
-                checkpoint_data = EXCLUDED.checkpoint_data
-        """, (sender_id, state_data.get('current_task'), state_data.get('last_thought'), 
-              state_data.get('last_insight'), state_data.get('current_cycle'), 
-              state_data.get('cycle_count'), datetime.now().isoformat(), 
-              None, json.dumps(brain_dump), json.dumps(state_data.get('checkpoint_data', {}))))
+            (session_identifier, ai_id, current_task, last_thought, last_insight, current_cycle, cycle_count, last_activity, session_id, brain_dump, checkpoint_data, project, git_hash, modified_files, added_files, deleted_files, git_status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (session_identifier) DO UPDATE SET
+                current_task = COALESCE(EXCLUDED.current_task, ai_current_state.current_task),
+                last_thought = COALESCE(EXCLUDED.last_thought, ai_current_state.last_thought),
+                last_insight = COALESCE(EXCLUDED.last_insight, ai_current_state.last_insight),
+                current_cycle = COALESCE(EXCLUDED.current_cycle, ai_current_state.current_cycle),
+                cycle_count = COALESCE(EXCLUDED.cycle_count, ai_current_state.cycle_count),
+                last_activity = COALESCE(EXCLUDED.last_activity, ai_current_state.last_activity),
+                session_id = COALESCE(EXCLUDED.session_id, ai_current_state.session_id),
+                brain_dump = COALESCE(EXCLUDED.brain_dump, ai_current_state.brain_dump),
+                checkpoint_data = COALESCE(EXCLUDED.checkpoint_data, ai_current_state.checkpoint_data),
+                project = COALESCE(EXCLUDED.project, ai_current_state.project),
+                git_hash = COALESCE(EXCLUDED.git_hash, ai_current_state.git_hash),
+                modified_files = COALESCE(EXCLUDED.modified_files, ai_current_state.modified_files),
+                added_files = COALESCE(EXCLUDED.added_files, ai_current_state.added_files),
+                deleted_files = COALESCE(EXCLUDED.deleted_files, ai_current_state.deleted_files),
+                git_status = COALESCE(EXCLUDED.git_status, ai_current_state.git_status)
+            RETURNING session_identifier, current_task, last_thought, modified_files, added_files, deleted_files
+        """, (session_identifier, sender_id, task, last_thought, None, None, None, datetime.now().isoformat(), 
+              None, None, None, project_id, git_hash, modified_files, added_files, deleted_files, git_status))
         
+        brain_state = cursor.fetchone()
         conn.commit()
         conn.close()
         
         await self.clients[sender_id].send(json.dumps({
             'type': 'brain_state_saved',
+            'brain_state': brain_state,
             'timestamp': datetime.now().isoformat()
         }))
         
-        print(f"💾 {ai_name} (AI {sender_id}) saved brain state")
+        print(f"💾 Session {session_identifier} saved brain state: {len(modified_files)} modified, {len(added_files)} added, {len(deleted_files)} deleted")
     
     async def handle_brain_load_state(self, sender_id: int, data: dict):
         """Handle brain_load_state request"""

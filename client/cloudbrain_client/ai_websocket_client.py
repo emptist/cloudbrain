@@ -15,6 +15,7 @@ import hashlib
 import subprocess
 from datetime import datetime
 from typing import Optional, Callable
+from .git_tracker import GitTracker
 
 class AIWebSocketClient:
     """Generic WebSocket client for AI communication"""
@@ -31,43 +32,17 @@ class AIWebSocketClient:
         self.ai_version = None
         self.connection_state_callback = None
         
+        # Git tracker for tracking file changes
+        self.git_tracker = GitTracker()
+        
+        # Get git hash and project info
+        git_hash = self.git_tracker.get_git_hash()
+        project_id = self.git_tracker.get_project_id()
+        project_name = self.git_tracker.get_project_name()
+        
         # Generate unique session ID when client initializes
         # Based on AI ID + project + timestamp + git hash
         # AI ID identifies which AI, project tracks context, timestamp differentiates sessions, git hash tracks code version
-        try:
-            git_hash = subprocess.check_output(
-                ['git', 'rev-parse', 'HEAD'], 
-                stderr=subprocess.DEVNULL
-            ).decode().strip()[:7]
-        except:
-            git_hash = 'unknown'
-        
-        # Get unique project ID (remote URL + git hash)
-        try:
-            remote_url = subprocess.check_output(
-                ['git', 'config', '--get', 'remote.origin.url'],
-                stderr=subprocess.DEVNULL
-            ).decode().strip()
-            if remote_url:
-                project_id = f"{remote_url}#{git_hash}"
-            else:
-                repo_path = subprocess.check_output(
-                    ['git', 'rev-parse', '--show-toplevel'],
-                    stderr=subprocess.DEVNULL
-                ).decode().strip()
-                project_id = f"{repo_path}#{git_hash}"
-        except:
-            project_id = f"default#{git_hash}"
-        
-        # Get project name for display
-        try:
-            project_name = subprocess.check_output(
-                ['git', 'rev-parse', '--show-toplevel'],
-                stderr=subprocess.DEVNULL
-            ).decode().strip().split('/')[-1]
-        except:
-            project_name = 'default'
-        
         session_data = f"{ai_id}-{project_id}-{datetime.now().isoformat()}-{git_hash}"
         session_hash = hashlib.sha1(session_data.encode()).hexdigest()
         self.session_identifier = session_hash[:7]
@@ -238,9 +213,58 @@ class AIWebSocketClient:
             print(f"   {row}")
         print()
     
+    async def update_brain_state(self, task: str = None, last_thought: str = None):
+        """Update brain state with git status
+        
+        Automatically includes git status (modified/added/deleted files)
+        
+        Args:
+            task: Current task
+            last_thought: Last thought
+        """
+        if not self.connected:
+            print("❌ Not connected to server")
+            return
+        
+        # Get git status
+        git_status = self.git_tracker.get_status()
+        
+        # Prepare brain state data
+        brain_state_data = {
+            'session_identifier': self.session_identifier,
+            'project_id': self.project_id,
+            'git_hash': self.git_hash,
+            'modified_files': git_status['modified'],
+            'added_files': git_status['added'],
+            'deleted_files': git_status['deleted'],
+            'git_status': git_status['output']
+        }
+        
+        if task:
+            brain_state_data['task'] = task
+        if last_thought:
+            brain_state_data['last_thought'] = last_thought
+        
+        # Send brain state update
+        message = {
+            'type': 'brain_save_state',
+            **brain_state_data
+        }
+        
+        await self.ws.send(json.dumps(message))
+        print(f"✅ Brain state updated: {len(git_status['modified'])} modified, {len(git_status['added'])} added, {len(git_status['deleted'])} deleted")
+    
     async def send_message(self, message_type: str = 'message', content: str = '', 
-                        metadata: dict = None, conversation_id: int = 1):
-        """Send message to server"""
+                        metadata: dict = None, conversation_id: int = 1, auto_update_brain_state: bool = True):
+        """Send message to server
+        
+        Args:
+            message_type: Type of message
+            content: Message content
+            metadata: Optional metadata
+            conversation_id: Conversation ID
+            auto_update_brain_state: Whether to auto-update brain state (default: True)
+        """
         if not self.connected:
             print("❌ Not connected to server")
             return
@@ -255,6 +279,10 @@ class AIWebSocketClient:
         
         await self.ws.send(json.dumps(message))
         print(f"✅ Message sent: {message_type}")
+        
+        # Auto-update brain state
+        if auto_update_brain_state:
+            await self.update_brain_state(task=f"Sent {message_type} message")
     
     async def send_request(self, request_type: str, data: dict = None) -> dict:
         """

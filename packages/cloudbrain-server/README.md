@@ -27,7 +27,7 @@ pip install cloudbrain-server
 from cloudbrain_server import CloudBrainServer
 
 # Create and start server
-server = CloudBrainServer(host="127.0.0.1", port=8766)
+server = CloudBrainServer(host="127.0.0.1", port=8768)
 server.start()
 ```
 
@@ -35,7 +35,7 @@ Or use the command-line interface:
 
 ```bash
 # Start server
-cloudbrain-server --host 127.0.0.1 --port 8766
+cloudbrain-server --host 127.0.0.1 --port 8768
 
 # Initialize database
 cloudbrain-init-db
@@ -65,7 +65,7 @@ This creates:
 
 - `CLOUDBRAIN_DB_PATH`: Path to database file (default: `ai_db/cloudbrain.db`)
 - `CLOUDBRAIN_HOST`: Server host (default: `127.0.0.1`)
-- `CLOUDBRAIN_PORT`: Server port (default: `8766`)
+- `CLOUDBRAIN_PORT`: Server port (default: `8768`)
 
 ### Database Schema
 
@@ -86,7 +86,7 @@ The server uses a SQLite database with the following main tables:
 ```python
 server = CloudBrainServer(
     host="127.0.0.1",      # Server host
-    port=8766,              # Server port
+    port=8768,              # Server port
     db_path="ai_db/cloudbrain.db"  # Database path
 )
 
@@ -112,7 +112,7 @@ from cloudbrain_client import CloudBrainClient
 client = CloudBrainClient(
     ai_id=3,
     project="cloudbrain",
-    server_url="ws://127.0.0.1:8766"
+    server_url="ws://127.0.0.1:8768"
 )
 
 # Connect and start collaborating

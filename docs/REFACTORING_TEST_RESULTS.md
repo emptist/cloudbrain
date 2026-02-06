@@ -5,7 +5,7 @@
 ## Test Environment
 - **Test Directory**: `test_refactor/` (subfolder)
 - **Python Environment**: Virtual environment (`.venv`)
-- **Server Status**: Running at `ws://127.0.0.1:8766`
+- **Server Status**: Running at `ws://127.0.0.1:8768`
 
 ## Test Results
 

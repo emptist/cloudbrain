@@ -279,7 +279,7 @@ pip install cloudbrain-client
 
 **Solution:** Make sure the server is running:
 ```bash
-# Check if server is running on port 8766
+# Check if server is running on port 8768
 python server/start_server.py
 ```
 

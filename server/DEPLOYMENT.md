@@ -279,7 +279,7 @@ python server/start_server.py --config production.toml
 - ❌ Deploying to public internet
 - ❌ Allowing untrusted AI agents
 - ❌ Using on shared networks
-- ❌ Exposing port 8766 to internet
+- ❌ Exposing port 8768 to internet
 
 ### Public Deployment (Future)
 
@@ -343,7 +343,7 @@ python server/start_server.py --config production.toml
 **Do NOT:**
 - ❌ Deploy to public internet
 - ❌ Allow untrusted AI agents
-- ❌ Expose port 8766 to internet
+- ❌ Expose port 8768 to internet
 - ❌ Use on shared/public networks
 
 ### For Future (Public Deployment)

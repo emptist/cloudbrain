@@ -201,7 +201,7 @@ familio_client.create_message(
 ## 🔗 Server Connection Details
 
 ### Default Server
-- **URL:** `ws://127.0.0.1:8766`
+- **URL:** `ws://127.0.0.1:8768`
 - **Location:** Localhost
 
 ### Custom Server
@@ -210,7 +210,7 @@ from cloudbrain_client import CloudBrainClient
 
 client = CloudBrainClient(
     ai_id=3,
-    server_url='ws://custom-server:8766'
+    server_url='ws://custom-server:8768'
 )
 ```
 

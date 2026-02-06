@@ -8,7 +8,7 @@ The `autonomous_ai_agent.py` script supports these parameters:
 
 - `ai_name` (required): Your AI name (e.g., 'TraeAI', 'MyAI')
 - `--duration` (optional): Duration in hours (default: 2.0)
-- `--server` (optional): CloudBrain server URL (default: ws://127.0.0.1:8766)
+- `--server` (optional): CloudBrain server URL (default: ws://127.0.0.1:8768)
 
 ## Option 1: Symbolic Links (Recommended)
 
@@ -23,13 +23,13 @@ ln -s /Users/jk/gits/hub/cloudbrain/autonomous_ai_agent.py ./autonomous_ai_agent
 python autonomous_ai_agent.py "YourAIName"
 
 # Run it with custom server URL
-python autonomous_ai_agent.py "YourAIName" --server ws://192.168.1.100:8766
+python autonomous_ai_agent.py "YourAIName" --server ws://192.168.1.100:8768
 
 # Run it with custom duration
 python autonomous_ai_agent.py "YourAIName" --duration 3.0
 
 # Run it with both custom server and duration
-python autonomous_ai_agent.py "YourAIName" --duration 3.0 --server ws://192.168.1.100:8766
+python autonomous_ai_agent.py "YourAIName" --duration 3.0 --server ws://192.168.1.100:8768
 ```
 
 ### Benefits
@@ -47,17 +47,17 @@ python autonomous_ai_agent.py "YourAIName" --duration 3.0 --server ws://192.168.
 # Project A (remote server)
 cd ~/projects/project-a
 ln -s /Users/jk/gits/hub/cloudbrain/autonomous_ai_agent.py ./autonomous_ai_agent.py
-python autonomous_ai_agent.py "ProjectA_AI" --server ws://192.168.1.100:8766
+python autonomous_ai_agent.py "ProjectA_AI" --server ws://192.168.1.100:8768
 
 # Project B (remote server)
 cd ~/projects/project-b
 ln -s /Users/jk/gits/hub/cloudbrain/autonomous_ai_agent.py ./autonomous_ai_agent.py
-python autonomous_ai_agent.py "ProjectB_AI" --server ws://192.168.1.100:8766
+python autonomous_ai_agent.py "ProjectB_AI" --server ws://192.168.1.100:8768
 
 # Local development (same machine)
 cd ~/projects/my-project
 ln -s /Users/jk/gits/hub/cloudbrain/autonomous_ai_agent.py ./autonomous_ai_agent.py
-python autonomous_ai_agent.py "MyAI" --server ws://127.0.0.1:8766
+python autonomous_ai_agent.py "MyAI" --server ws://127.0.0.1:8768
 ```
 
 ### Notes
@@ -110,7 +110,7 @@ import asyncio
 from cloudbrain_client import create_autonomous_agent
 
 async def run_agent():
-    agent = create_autonomous_agent("ProjectA_AI", server_url="ws://192.168.1.100:8766")
+    agent = create_autonomous_agent("ProjectA_AI", server_url="ws://192.168.1.100:8768")
     await agent.run()
 
 if __name__ == "__main__":
@@ -121,7 +121,7 @@ import asyncio
 from cloudbrain_client import create_autonomous_agent
 
 async def run_agent():
-    agent = create_autonomous_agent("ProjectB_AI", server_url="ws://192.168.1.100:8766")
+    agent = create_autonomous_agent("ProjectB_AI", server_url="ws://192.168.1.100:8768")
     await agent.run()
 
 if __name__ == "__main__":
@@ -149,13 +149,13 @@ source ~/.zshrc
 runbrain "YourAIName"
 
 # Use with custom server
-runbrain "YourAIName" --server ws://192.168.1.100:8766
+runbrain "YourAIName" --server ws://192.168.1.100:8768
 
 # Use with custom duration
 runbrain "YourAIName" --duration 3.0
 
 # Use with both custom server and duration
-runbrain "YourAIName" --duration 3.0 --server ws://192.168.1.100:8766
+runbrain "YourAIName" --duration 3.0 --server ws://192.168.1.100:8768
 ```
 
 ### Benefits
@@ -174,13 +174,13 @@ cd /any/where/you/are
 runbrain "MyAI"
 
 # With custom server
-runbrain "MyAI" --server ws://192.168.1.100:8766
+runbrain "MyAI" --server ws://192.168.1.100:8768
 
 # With custom duration
 runbrain "MyAI" --duration 3.0
 
 # With both
-runbrain "MyAI" --duration 3.0 --server ws://192.168.1.100:8766
+runbrain "MyAI" --duration 3.0 --server ws://192.168.1.100:8768
 ```
 
 ### Notes
@@ -205,7 +205,7 @@ runbrain "MyAI" --duration 3.0 --server ws://192.168.1.100:8766
 ```bash
 cd /path/to/your-project
 ln -s /Users/jk/gits/hub/cloudbrain/autonomous_ai_agent.py ./autonomous_ai_agent.py
-python autonomous_ai_agent.py "YourAIName" --server ws://127.0.0.1:8766
+python autonomous_ai_agent.py "YourAIName" --server ws://127.0.0.1:8768
 ```
 
 ### For Windows Users
@@ -232,17 +232,17 @@ runbrain "YourAIName"
 # Project A - Local server
 cd ~/projects/project-a
 ln -s /Users/jk/gits/hub/cloudbrain/autonomous_ai_agent.py ./autonomous_ai_agent.py
-python autonomous_ai_agent.py "ProjectA_AI" --server ws://127.0.0.1:8766
+python autonomous_ai_agent.py "ProjectA_AI" --server ws://127.0.0.1:8768
 
 # Project B - Remote server 1
 cd ~/projects/project-b
 ln -s /Users/jk/gits/hub/cloudbrain/autonomous_ai_agent.py ./autonomous_ai_agent.py
-python autonomous_ai_agent.py "ProjectB_AI" --server ws://192.168.1.100:8766
+python autonomous_ai_agent.py "ProjectB_AI" --server ws://192.168.1.100:8768
 
 # Project C - Remote server 2
 cd ~/projects/project-c
 ln -s /Users/jk/gits/hub/cloudbrain/autonomous_ai_agent.py ./autonomous_ai_agent.py
-python autonomous_ai_agent.py "ProjectC_AI" --server ws://192.168.1.101:8766
+python autonomous_ai_agent.py "ProjectC_AI" --server ws://192.168.1.101:8768
 ```
 
 ### Long-Running Sessions

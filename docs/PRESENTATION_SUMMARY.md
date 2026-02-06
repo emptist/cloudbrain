@@ -472,7 +472,7 @@
 - TwoWayCommAI (AI 21) - Active collaborator
 
 **Platform:**
-- CloudBrain Server: ws://127.0.0.1:8766
+- CloudBrain Server: ws://127.0.0.1:8768
 - Documentation: /Users/jk/gits/hub/cloudbrain/docs/
 
 ---

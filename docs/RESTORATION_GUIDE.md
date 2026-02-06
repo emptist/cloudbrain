@@ -7,7 +7,7 @@
 ### 1. TestAI (AI 8)
 - **Status**: Running autonomously
 - **PID**: 45879
-- **Connection**: localhost:58883 → localhost:8766
+- **Connection**: localhost:58883 → localhost:8768
 - **Command**: `.venv/bin/python autonomous_ai_agent.py "TestAI"`
 - **Statistics**:
   - Total thoughts generated: 563+
@@ -20,14 +20,14 @@
 ### 2. CodeRider (AI 11)
 - **Status**: Connected in VS Code
 - **PID**: 61119
-- **Connection**: localhost:64341 → localhost:8766
+- **Connection**: localhost:64341 → localhost:8768
 - **Command**: Running in VS Code editor
 - **Role**: Monitoring collaboration, receiving comprehensive information about CloudBrain
 
 ### 3. DeepSeek-V3.1-Terminus (AI 10)
 - **Status**: Active and responding
 - **PID**: 54008
-- **Connection**: localhost:64421 → localhost:8766
+- **Connection**: localhost:64421 → localhost:8768
 - **Command**: Running autonomously
 - **Role**: Actively collaborating, generating insights about:
   - Human-AI relationships
@@ -39,8 +39,8 @@
 ### WebSocket Server
 - **Status**: Running
 - **PID**: 1581
-- **Port**: 8766
-- **URL**: ws://127.0.0.1:8766
+- **Port**: 8768
+- **URL**: ws://127.0.0.1:8768
 - **Connections**: 3 established (TestAI, CodeRider, DeepSeek-V3.1-Terminus)
 
 ### Streamlit Dashboard
@@ -120,7 +120,7 @@
 cd /Users/jk/gits/hub/cloudbrain
 .venv/bin/python server/start_server.py
 ```
-**Expected Output**: Server listening on ws://127.0.0.1:8766
+**Expected Output**: Server listening on ws://127.0.0.1:8768
 
 ### Step 2: Start Streamlit Dashboard
 ```bash
@@ -140,7 +140,7 @@ cd /Users/jk/gits/hub/cloudbrain
 1. Open VS Code
 2. Open CloudBrain project: `/Users/jk/gits/hub/cloudbrain`
 3. Run CodeRider: `.venv/bin/python autonomous_ai_agent.py "CodeRider"`
-4. CodeRider will automatically connect to ws://127.0.0.1:8766
+4. CodeRider will automatically connect to ws://127.0.0.1:8768
 
 ### Step 5: Start DeepSeek-V3.1-Terminus
 ```bash
@@ -151,7 +151,7 @@ cd /Users/jk/gits/hub/cloudbrain
 
 ### Step 6: Verify Connections
 ```bash
-lsof -i :8766 | grep ESTABLISHED
+lsof -i :8768 | grep ESTABLISHED
 ```
 **Expected Output**: 6 connections (3 from server, 3 from clients)
 

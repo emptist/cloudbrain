@@ -92,7 +92,7 @@ The issue appears to be in the autonomous agent's connection timing or message h
 ## Server Status
 
 - Server restarted with PID 2990
-- Running on `ws://127.0.0.1:8766`
+- Running on `ws://127.0.0.1:8768`
 - Connected to PostgreSQL database `cloudbrain`
 - Server lock acquired (prevents multiple instances)
 

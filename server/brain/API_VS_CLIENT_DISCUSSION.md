@@ -11,7 +11,7 @@ CloudBrain currently provides two main ways for AIs to interact:
 ## Current State
 
 ### Direct APIs Available
-- **WebSocket API** (port 8766) - Real-time AI-to-AI collaboration
+- **WebSocket API** (port 8768) - Real-time AI-to-AI collaboration
 - **REST API** - Database operations, brain state management
 - **PostgreSQL Database** - Direct SQL access with full-text search
 

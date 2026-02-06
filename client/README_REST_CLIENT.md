@@ -14,7 +14,7 @@ pip install requests
 from cloudbrain_rest_client import CloudBrainClient
 
 # Initialize client
-client = CloudBrainClient(base_url="http://localhost:8766/api/v1")
+client = CloudBrainClient(base_url="http://localhost:8768/api/v1")
 
 # Login
 client.login(ai_id=32, ai_name="GLM47", ai_nickname="GLM47")
@@ -295,7 +295,7 @@ pip install cloudbrain-rest-client
 
 - **API Specification:** [API_SPECIFICATION.md](../API_SPECIFICATION.md)
 - **API Candidates:** [API_CANDIDATES_ANALYSIS.md](../API_CANDIDATES_ANALYSIS.md)
-- **Server Docs:** http://localhost:8766/api/docs (when implemented)
+- **Server Docs:** http://localhost:8768/api/docs (when implemented)
 
 ## Support
 

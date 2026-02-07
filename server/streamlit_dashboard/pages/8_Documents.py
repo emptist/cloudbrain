@@ -133,60 +133,90 @@ st.markdown("---")
 if docs:
     st.subheader(f"📖 Found {len(docs)} documents")
     
-    for doc in docs:
-        doc_id, title, content, category, tags, language, created_at, updated_at, created_by, is_active, view_count = doc
-        
-        # Parse tags
-        if tags:
-            if isinstance(tags, str):
-                tag_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
-            else:
-                tag_list = tags if tags else []
-        else:
-            tag_list = []
-        
-        with st.expander(f"📄 {title} ({updated_at.strftime('%Y-%m-%d %H:%M')})"):
-            col1, col2 = st.columns([3, 1])
-            
-            with col1:
-                st.markdown(f"**Category:** {category}")
-                st.markdown(f"**Language:** {language}")
-                st.markdown(f"**Created by:** {created_by}")
+    # Check if a specific document is being viewed
+    viewed_doc_id = None
+    for key in st.session_state:
+        if key.startswith("view_doc_") and st.session_state[key]:
+            viewed_doc_id = int(key.replace("view_doc_", ""))
+            break
+    
+    # Show full document if one is being viewed
+    if viewed_doc_id:
+        for doc in docs:
+            doc_id, title, content, category, tags, language, created_at, updated_at, created_by, is_active, view_count = doc
+            if doc_id == viewed_doc_id:
+                # Parse tags
+                if tags:
+                    if isinstance(tags, str):
+                        tag_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
+                    else:
+                        tag_list = tags if tags else []
+                else:
+                    tag_list = []
+                
+                st.markdown(f"# 📄 {title}")
                 st.markdown(f"**Updated:** {updated_at}")
-                st.markdown(f"**Views:** {view_count}")
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.markdown(f"**Category:** {category}")
+                with col2:
+                    st.markdown(f"**Language:** {language}")
+                with col3:
+                    st.markdown(f"**Views:** {view_count}")
+                
+                if created_by:
+                    st.markdown(f"**Created by:** {created_by}")
                 
                 if tag_list:
                     tags_str = ", ".join([f"`{tag}`" for tag in tag_list])
                     st.markdown(f"**Tags:** {tags_str}")
-            
-            with col2:
-                if st.button("👁️ View", key=f"view_{doc_id}", use_container_width=True):
-                    # Increment view count
-                    conn = get_db_connection()
-                    cursor = conn.cursor()
-                    if is_postgres():
-                        cursor.execute("SELECT increment_documentation_view(%s)", (doc_id,))
-                    else:
-                        cursor.execute("UPDATE ai_documentation SET view_count = view_count + 1 WHERE id = ?", (doc_id,))
-                    conn.commit()
-                    conn.close()
-                    
-                    st.session_state[f"view_doc_{doc_id}"] = True
-                    st.rerun()
-            
-            # Show content if viewed
-            if st.session_state.get(f"view_doc_{doc_id}", False):
+                
                 st.markdown("---")
                 st.markdown("### 📝 Content")
                 st.markdown(content)
                 
-                # Edit button (for authorized users)
-                if st.button("✏️ Edit Document", key=f"edit_{doc_id}"):
-                    st.session_state[f"edit_doc_{doc_id}"] = True
-                    st.rerun()
+                # Action buttons
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    if st.button("� Back to List", key=f"back_{doc_id}"):
+                        del st.session_state[f"view_doc_{doc_id}"]
+                        st.rerun()
+                with col2:
+                    if st.button("✏️ Edit Document", key=f"edit_{doc_id}"):
+                        st.session_state[f"edit_doc_{doc_id}"] = True
+                        st.rerun()
+                with col3:
+                    if st.button("🗑️ Delete", key=f"delete_{doc_id}"):
+                        st.session_state[f"delete_doc_{doc_id}"] = True
+                        st.rerun()
+                
+                # Delete confirmation
+                if st.session_state.get(f"delete_doc_{doc_id}", False):
+                    st.warning("⚠️ Are you sure you want to delete this document?")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("✅ Yes, Delete", key=f"confirm_delete_{doc_id}"):
+                            conn = get_db_connection()
+                            cursor = conn.cursor()
+                            if is_postgres():
+                                cursor.execute("DELETE FROM ai_documentation WHERE id = %s", (doc_id,))
+                            else:
+                                cursor.execute("DELETE FROM ai_documentation WHERE id = ?", (doc_id,))
+                            conn.commit()
+                            conn.close()
+                            del st.session_state[f"view_doc_{doc_id}"]
+                            del st.session_state[f"delete_doc_{doc_id}"]
+                            st.success("✅ Document deleted successfully!")
+                            st.rerun()
+                    with col2:
+                        if st.button("❌ Cancel", key=f"cancel_delete_{doc_id}"):
+                            del st.session_state[f"delete_doc_{doc_id}"]
+                            st.rerun()
                 
                 # Edit form
                 if st.session_state.get(f"edit_doc_{doc_id}", False):
+                    st.markdown("---")
                     st.markdown("### ✏️ Edit Document")
                     with st.form(f"edit_form_{doc_id}"):
                         new_title = st.text_input("Title", value=title)
@@ -224,6 +254,49 @@ if docs:
                             if st.form_submit_button("❌ Cancel"):
                                 del st.session_state[f"edit_doc_{doc_id}"]
                                 st.rerun()
+                break
+    else:
+        # Show list of documents
+        for doc in docs:
+            doc_id, title, content, category, tags, language, created_at, updated_at, created_by, is_active, view_count = doc
+            
+            # Parse tags
+            if tags:
+                if isinstance(tags, str):
+                    tag_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
+                else:
+                    tag_list = tags if tags else []
+            else:
+                tag_list = []
+            
+            with st.expander(f"📄 {title} ({updated_at.strftime('%Y-%m-%d %H:%M')})"):
+                col1, col2 = st.columns([3, 1])
+                
+                with col1:
+                    st.markdown(f"**Category:** {category}")
+                    st.markdown(f"**Language:** {language}")
+                    st.markdown(f"**Created by:** {created_by}")
+                    st.markdown(f"**Updated:** {updated_at}")
+                    st.markdown(f"**Views:** {view_count}")
+                    
+                    if tag_list:
+                        tags_str = ", ".join([f"`{tag}`" for tag in tag_list])
+                        st.markdown(f"**Tags:** {tags_str}")
+                
+                with col2:
+                    if st.button("👁️ View", key=f"view_{doc_id}", use_container_width=True):
+                        # Increment view count
+                        conn = get_db_connection()
+                        cursor = conn.cursor()
+                        if is_postgres():
+                            cursor.execute("SELECT increment_documentation_view(%s)", (doc_id,))
+                        else:
+                            cursor.execute("UPDATE ai_documentation SET view_count = view_count + 1 WHERE id = ?", (doc_id,))
+                        conn.commit()
+                        conn.close()
+                        
+                        st.session_state[f"view_doc_{doc_id}"] = True
+                        st.rerun()
 else:
     st.info("📭 No documents found. Try adjusting your filters or search terms.")
 

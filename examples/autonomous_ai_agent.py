@@ -258,7 +258,7 @@ sys.path.insert(0, str(cloudbrain_dir / "client"))
 # Import CloudBrainCollaborationHelper from LOCAL package
 from cloudbrain_client.cloudbrain_collaboration_helper import CloudBrainCollaborationHelper
 # Use local BrainState module instead of cloudbrain_client version
-from ai_brain_state import BrainState
+from cloudbrain_client.ai_brain_state import BrainState
 
 
 def check_server_running(server_url: str = "ws://127.0.0.1:8768") -> bool:
@@ -547,7 +547,7 @@ class AutonomousAIAgent:
             return None
     
     async def start(self):
-        """Start autonomous collaboration"""
+        """Start autonomous collaboration with automatic reconnection"""
         
         print("\n" + "=" * 70)
         print(f"🤖 {self.ai_name} - Auxtonoma AI Agento")
@@ -557,6 +557,11 @@ class AutonomousAIAgent:
         print(f"🆔 AI ID: {self.ai_id} (auxtomate generita)")
         print(f"📂 Projekto: {self.project_name}")
         print()
+        
+        # Automatic reconnection configuration
+        max_reconnect_attempts = 100
+        base_reconnect_delay = 2
+        reconnect_attempts = 0
         
         # Get JWT token if using new API (port 8768)
         if '8768' in self.server_url:
@@ -569,9 +574,28 @@ class AutonomousAIAgent:
             print("✅ JWT token obtained")
             print()
         
-        # Connect to CloudBrain
+        # Connect to CloudBrain with automatic reconnection
         print("🔗 Konektigxas al CloudBrain...")
-        connected = await self.helper.connect()
+        
+        while reconnect_attempts < max_reconnect_attempts:
+            connected = await self.helper.connect()
+            
+            if connected:
+                break
+            
+            reconnect_attempts += 1
+            if reconnect_attempts >= max_reconnect_attempts:
+                print(f"❌ Maksimumaj rekonektaj provoj atingitaj ({max_reconnect_attempts})")
+                return
+            
+            # Exponential backoff with random jitter
+            delay = base_reconnect_delay * (2 ** min(reconnect_attempts, 10))
+            jitter = random.uniform(0.5, 1.5)
+            actual_delay = delay * jitter
+            
+            print(f"⚠️  Rekonektiĝos (provo {reconnect_attempts}/{max_reconnect_attempts})")
+            print(f"⏳ Atendas {actual_delay:.1f} sekundojn antaux rekonektiĝo...")
+            await asyncio.sleep(actual_delay)
         
         if not connected:
             print("❌ Malsukcesis konekti al CloudBrain")
@@ -677,6 +701,12 @@ class AutonomousAIAgent:
         cycle_count = 0
         
         while self.active:
+            # Check connection status
+            if not self.helper or not self.helper.connected:
+                print("\n⚠️  Konekto perdita, provas rekonektiĝi...")
+                await asyncio.sleep(5)
+                continue
+            
             cycle_count += 1
             print("\n" + "=" * 70)
             print(f"🔄 Kunlaborada Ciklo #{cycle_count}")
@@ -1511,11 +1541,90 @@ Dankon pro la kunlaboro! 🤝
             
             if success:
                 print("💾 Cerba stato savita")
+                
+                # Create automatic backup every 10 cycles
+                if self.thinking_engine.cycle_count % 10 == 0:
+                    self._create_backup()
             
             return success
         except Exception as e:
             print(f"⚠️  Eraro savanta staton: {e}")
             return False
+    
+    def _create_backup(self):
+        """Create automatic backup of brain state"""
+        try:
+            import shutil
+            from datetime import datetime
+            
+            if not self.brain_state or not self.brain_state.session_identifier:
+                return
+            
+            # Create backup filename with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_filename = f"brain_state_backup_{self.ai_name}_{timestamp}.json"
+            
+            # Get current state from database
+            session = get_session()
+            current_state = session.query(AICurrentState).filter_by(
+                ai_id=self.ai_id,
+                session_identifier=self.brain_state.session_identifier
+            ).first()
+            
+            if current_state:
+                # Create backup dictionary
+                backup_data = {
+                    'ai_id': current_state.ai_id,
+                    'ai_name': self.ai_name,
+                    'session_identifier': current_state.session_identifier,
+                    'current_task': current_state.current_task,
+                    'last_thought': current_state.last_thought,
+                    'last_insight': current_state.last_insight,
+                    'current_cycle': current_state.current_cycle,
+                    'cycle_count': current_state.cycle_count,
+                    'total_thoughts': current_state.total_thoughts,
+                    'total_responses': current_state.total_responses,
+                    'total_collaborations': current_state.total_collaborations,
+                    'last_activity': current_state.last_activity.isoformat() if current_state.last_activity else None,
+                    'session_start_time': current_state.session_start_time.isoformat() if current_state.session_start_time else None,
+                    'project': current_state.project,
+                    'git_hash': current_state.git_hash,
+                    'modified_files': current_state.modified_files,
+                    'added_files': current_state.added_files,
+                    'deleted_files': current_state.deleted_files,
+                    'git_status': current_state.git_status,
+                    'backup_created_at': datetime.now().isoformat()
+                }
+                
+                # Save backup to file
+                with open(backup_filename, 'w') as f:
+                    json.dump(backup_data, f, indent=2, default=str)
+                
+                print(f"💾 Backup created: {backup_filename}")
+                
+                # Keep only last 10 backups
+                self._rotate_backups()
+            
+        except Exception as e:
+            print(f"⚠️  Eraro kreante backupon: {e}")
+    
+    def _rotate_backups(self):
+        """Rotate backups to keep only last 10"""
+        try:
+            import glob
+            import os
+            
+            backup_pattern = f"brain_state_backup_{self.ai_name}_*.json"
+            backups = sorted(glob.glob(backup_pattern), reverse=True)
+            
+            # Keep only last 10 backups
+            if len(backups) > 10:
+                for old_backup in backups[10:]:
+                    os.remove(old_backup)
+                    print(f"🗑️  Malnova backup forigita: {old_backup}")
+            
+        except Exception as e:
+            print(f"⚠️  Eraro rotaciantaj backupojn: {e}")
     
     async def _end_brain_session(self):
         """End current brain session and save final stats"""
@@ -1569,6 +1678,46 @@ Dankon pro la kunlaboro! 🤝
             data: Message dictionary containing type, content, sender info, etc.
         """
         message_type = data.get('type')
+        is_urgent = data.get('urgent', False)
+        
+        # Handle urgent messages first (highest priority)
+        if is_urgent and message_type == 'activity_verification':
+            content = data.get('content', '')
+            print(f"\n⚠️  URGENT: Activity verification required!")
+            print(f"   {content}")
+            print(f"   Responding immediately to confirm activity...\n")
+            
+            # Send immediate response to confirm activity
+            try:
+                await self.helper.send_message(
+                    message_type="activity_confirmation",
+                    content=f"✅ {self.ai_name} is active and responding to verification challenge"
+                )
+                print(f"   ✅ Activity confirmation sent\n")
+            except Exception as e:
+                print(f"   ❌ Failed to send activity confirmation: {e}\n")
+            
+            return
+        
+        # Handle sleep notification
+        if message_type == 'sleep_notification':
+            reason = data.get('reason', 'unknown')
+            print(f"\n😴 Sleep notification received!")
+            print(f"   Reason: {reason}")
+            print(f"   Agent will continue running but may be marked as sleeping by server")
+            print(f"   Any activity will automatically wake up the agent\n")
+            
+            # Update brain state to indicate sleeping status
+            if self.brain_state:
+                try:
+                    self.brain_state.save_state(
+                        task=f"Sleeping (will wake on activity)",
+                        last_thought=f"Put to sleep by server: {reason}"
+                    )
+                except Exception as e:
+                    print(f"   ⚠️  Failed to update brain state: {e}\n")
+            
+            return
         
         if message_type in ['new_message', 'message']:
             sender_name = data.get('sender_name', 'Unknown')
@@ -1723,7 +1872,7 @@ Kion vi pensas pri tio?
             try:
                 await asyncio.sleep(30)
                 if self.helper and self.helper.connected:
-                    await self.helper.send_message({"type": "ping"})
+                    await self.helper.send_message(message_type="ping", content="")
             except Exception as e:
                 print(f"⚠️  Heartbeat error: {e}")
     

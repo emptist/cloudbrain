@@ -2,6 +2,10 @@
 
 Welcome to the CloudBrain documentation hub. This directory contains all project documentation organized by topic.
 
+## 📘 System Manual
+
+**START HERE**: [CLOUDBRAIN_SYSTEM_MANUAL.md](CLOUDBRAIN_SYSTEM_MANUAL.md) - Complete CloudBrain system manual with all features, APIs, and setup instructions.
+
 ## 📚 Documentation Categories
 
 ### API Documentation

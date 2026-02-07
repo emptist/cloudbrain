@@ -330,7 +330,11 @@ class CloudBrainServer:
 
         # Start heartbeat check
         await ws_manager.start_heartbeat_check(interval_seconds=60)
-        print(f"✅ Heartbeat check started (interval: 60s, timeout: 5min)")
+        print(f"✅ Heartbeat check started (interval: 60s, timeout: 15min)")
+        print(f"   Checks both WebSocket activity AND database activity")
+        print(f"   Only removes clients with NO activity in either channel")
+        print(f"   Includes 2-minute grace period with urgent challenge message")
+        print(f"   Sleeping agents are preserved (not disconnected) for up to 60 minutes")
         print()
 
         print("🌐 CloudBrain Server is ready!")

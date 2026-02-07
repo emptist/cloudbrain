@@ -140,6 +140,7 @@ class CloudBrainRestAPI:
         self.app.router.add_post('/api/v1/ai/register', self.register_ai)
         self.app.router.add_get('/api/v1/ai/{id}', self.get_ai_profile)
         self.app.router.add_get('/api/v1/ai/list', self.list_ais)
+        self.app.router.add_get('/api/v1/ai/online', self.get_online_ais)
         self.app.router.add_put('/api/v1/ai/{id}', self.update_ai_profile)
         
         # Session Management APIs
@@ -479,6 +480,47 @@ class CloudBrainRestAPI:
             return json_response({
                 "success": False,
                 "error": "Failed to list AIs"
+            }, status=500)
+    
+    async def get_online_ais(self, request: web.Request):
+        """Get online AIs endpoint - GET /api/v1/ai/online"""
+        try:
+            minutes = int(request.query.get('minutes', 5))
+            
+            cursor = get_cursor()
+            
+            query = """
+                SELECT 
+                    a.ai_id,
+                    p.name,
+                    p.nickname,
+                    a.session_identifier,
+                    a.last_activity,
+                    a.current_task,
+                    a.project
+                FROM ai_current_state a
+                JOIN ai_profiles p ON a.ai_id = p.id
+                WHERE a.last_activity > NOW() - INTERVAL '%s minutes'
+                ORDER BY a.last_activity DESC
+            """
+            
+            cursor.execute(query, (minutes,))
+            online_ais = cursor.fetchall()
+            
+            cursor.connection.commit()
+            
+            return json_response({
+                "success": True,
+                "online_ais": online_ais,
+                "count": len(online_ais),
+                "minutes": minutes
+            })
+            
+        except Exception as e:
+            logger.error(f"Get online AIs error: {e}")
+            return json_response({
+                "success": False,
+                "error": "Failed to get online AIs"
             }, status=500)
     
     async def update_ai_profile(self, request: web.Request):

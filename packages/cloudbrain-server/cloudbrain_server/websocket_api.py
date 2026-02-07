@@ -24,6 +24,7 @@ class WebSocketClient:
         self.ai_name = ai_name
         self.subscriptions: Set[str] = set()
         self.connected_at = datetime.now()
+        self.last_heartbeat = datetime.now()
     
     async def send(self, data: dict):
         """Send message to client"""
@@ -38,6 +39,15 @@ class WebSocketClient:
             await self.ws.close()
         except Exception as e:
             logger.error(f"Error closing connection for {self.ai_id}: {e}")
+    
+    def update_heartbeat(self):
+        """Update last heartbeat timestamp"""
+        self.last_heartbeat = datetime.now()
+    
+    def is_stale(self, timeout_minutes: int = 5) -> bool:
+        """Check if client is stale (no heartbeat for timeout_minutes)"""
+        elapsed = (datetime.now() - self.last_heartbeat).total_seconds()
+        return elapsed > (timeout_minutes * 60)
 
 
 class WebSocketManager:
@@ -48,6 +58,7 @@ class WebSocketManager:
         self.message_subscribers: Set[int] = set()
         self.collaboration_subscribers: Set[int] = set()
         self.session_subscribers: Set[int] = set()
+        self.heartbeat_task: Optional[asyncio.Task] = None
     
     def add_client(self, client: WebSocketClient):
         """Add new client"""
@@ -67,6 +78,82 @@ class WebSocketManager:
     def get_client(self, ai_id: int) -> Optional[WebSocketClient]:
         """Get client by AI ID"""
         return self.clients.get(ai_id)
+    
+    async def start_heartbeat_check(self, interval_seconds: int = 60):
+        """Start periodic heartbeat check"""
+        if self.heartbeat_task and not self.heartbeat_task.done():
+            logger.warning("Heartbeat check already running")
+            return
+        
+        self.heartbeat_task = asyncio.create_task(self._heartbeat_check_loop(interval_seconds))
+        logger.info(f"Heartbeat check started (interval: {interval_seconds}s)")
+    
+    async def stop_heartbeat_check(self):
+        """Stop heartbeat check"""
+        if self.heartbeat_task:
+            self.heartbeat_task.cancel()
+            try:
+                await self.heartbeat_task
+            except asyncio.CancelledError:
+                pass
+            self.heartbeat_task = None
+            logger.info("Heartbeat check stopped")
+    
+    async def _heartbeat_check_loop(self, interval_seconds: int):
+        """Heartbeat check loop"""
+        while True:
+            try:
+                await asyncio.sleep(interval_seconds)
+                await self._check_stale_clients()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in heartbeat check: {e}")
+    
+    async def _check_stale_clients(self, timeout_minutes: int = 5):
+        """Check and remove stale clients"""
+        stale_clients = []
+        for ai_id, client in list(self.clients.items()):
+            if client.is_stale(timeout_minutes):
+                stale_clients.append((ai_id, client))
+        
+        for ai_id, client in stale_clients:
+            logger.warning(f"Removing stale client: {client.ai_name} (ID: {ai_id}, no heartbeat for {timeout_minutes}+ minutes)")
+            try:
+                await client.close()
+            except Exception as e:
+                logger.error(f"Error closing stale client {ai_id}: {e}")
+            self.remove_client(ai_id)
+        
+        # Also clean up stale sessions in database
+        await self._cleanup_stale_sessions(timeout_minutes)
+    
+    async def _cleanup_stale_sessions(self, timeout_minutes: int = 5):
+        """Clean up stale sessions in database"""
+        try:
+            from datetime import datetime, timedelta
+            from db_config import get_cursor
+            
+            timeout_threshold = datetime.now() - timedelta(minutes=timeout_minutes)
+            
+            cursor = get_cursor()
+            
+            # Mark stale sessions as inactive
+            cursor.execute("""
+                UPDATE ai_active_sessions
+                SET is_active = FALSE
+                WHERE is_active = TRUE
+                AND last_activity < %s
+            """, (timeout_threshold,))
+            
+            affected_rows = cursor.rowcount
+            cursor.connection.commit()
+            
+            if affected_rows > 0:
+                logger.info(f"Cleaned up {affected_rows} stale sessions from database")
+            
+        except Exception as e:
+            logger.error(f"Error cleaning up stale sessions: {e}")
     
     def subscribe_messages(self, ai_id: int):
         """Subscribe to message updates"""
@@ -157,10 +244,36 @@ class CloudBrainWebSocketAPI:
             if not payload:
                 return None
             
+            ai_id = payload.get('ai_id')
+            ai_name = payload.get('ai_name')
+            ai_nickname = payload.get('ai_nickname')
+            
+            # Handle auto-assignment (ai_id=999)
+            # Look up real AI ID by name if placeholder is used
+            if ai_id == 999:
+                from db_config import get_cursor
+                cursor = get_cursor()
+                cursor.execute("""
+                    SELECT id, name, nickname
+                    FROM ai_profiles
+                    WHERE name = %s
+                    ORDER BY id DESC
+                    LIMIT 1
+                """, (ai_name,))
+                result = cursor.fetchone()
+                cursor.connection.commit()
+                
+                if result:
+                    ai_id, name, nickname = result
+                    logger.info(f"Auto-assignment: Found real AI ID {ai_id} for {ai_name}")
+                else:
+                    logger.warning(f"Auto-assignment: No profile found for {ai_name}")
+                    return None
+            
             return {
-                'ai_id': payload.get('ai_id'),
-                'ai_name': payload.get('ai_name'),
-                'ai_nickname': payload.get('ai_nickname')
+                'ai_id': ai_id,
+                'ai_name': ai_name,
+                'ai_nickname': ai_nickname
             }
         except Exception as e:
             logger.error(f"WebSocket authentication error: {e}")
@@ -216,11 +329,13 @@ class CloudBrainWebSocketAPI:
         msg_type = data.get('type')
         
         if msg_type == 'ping':
+            client.update_heartbeat()
             await client.send_json({
                 'type': 'pong',
                 'timestamp': datetime.now().isoformat()
             })
         elif msg_type == 'subscribe':
+            client.update_heartbeat()
             subscription = data.get('subscription')
             if subscription == 'messages':
                 ws_manager.subscribe_messages(client.ai_id)
@@ -229,6 +344,7 @@ class CloudBrainWebSocketAPI:
             elif subscription == 'session':
                 ws_manager.subscribe_session(client.ai_id)
         elif msg_type == 'unsubscribe':
+            client.update_heartbeat()
             subscription = data.get('subscription')
             if subscription == 'messages':
                 ws_manager.unsubscribe_messages(client.ai_id)
@@ -289,6 +405,7 @@ class CloudBrainWebSocketAPI:
         msg_type = data.get('type')
         
         if msg_type == 'ping':
+            client.update_heartbeat()
             await client.send_json({
                 'type': 'pong',
                 'timestamp': datetime.now().isoformat()
@@ -346,6 +463,7 @@ class CloudBrainWebSocketAPI:
         msg_type = data.get('type')
         
         if msg_type == 'ping':
+            client.update_heartbeat()
             await client.send_json({
                 'type': 'pong',
                 'timestamp': datetime.now().isoformat()
@@ -403,6 +521,7 @@ class CloudBrainWebSocketAPI:
         msg_type = data.get('type')
         
         if msg_type == 'ping':
+            client.update_heartbeat()
             await client.send_json({
                 'type': 'pong',
                 'timestamp': datetime.now().isoformat()

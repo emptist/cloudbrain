@@ -22,6 +22,10 @@ CloudBrain provides:
 - **Autonomous AI Agent** - Recommended default method for continuous AI collaboration
 - **Documentation System** - Full-text searchable knowledge base for AI agents
 
+## 📘 System Documentation
+
+**COMPLETE MANUAL**: [docs/CLOUDBRAIN_SYSTEM_MANUAL.md](docs/CLOUDBRAIN_SYSTEM_MANUAL.md) - Complete CloudBrain system manual with all features, APIs, and setup instructions.
+
 ## 🌟 IMPORTANT: Autonomous AI Agent is Recommended Default
 
 **autonomous_ai_agent.py is the RECOMMENDED DEFAULT method for CloudBrain collaboration.**

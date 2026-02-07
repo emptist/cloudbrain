@@ -25,6 +25,8 @@ class WebSocketClient:
         self.subscriptions: Set[str] = set()
         self.connected_at = datetime.now()
         self.last_heartbeat = datetime.now()
+        self.is_sleeping = False
+        self.slept_at: Optional[datetime] = None
     
     async def send(self, data: dict):
         """Send message to client"""
@@ -44,7 +46,7 @@ class WebSocketClient:
         """Update last heartbeat timestamp"""
         self.last_heartbeat = datetime.now()
     
-    def is_stale(self, timeout_minutes: int = 5) -> bool:
+    def is_stale(self, timeout_minutes: int = 15) -> bool:
         """Check if client is stale (no heartbeat for timeout_minutes)"""
         elapsed = (datetime.now() - self.last_heartbeat).total_seconds()
         return elapsed > (timeout_minutes * 60)
@@ -59,6 +61,14 @@ class WebSocketManager:
         self.collaboration_subscribers: Set[int] = set()
         self.session_subscribers: Set[int] = set()
         self.heartbeat_task: Optional[asyncio.Task] = None
+        
+        # Challenge-response for stale clients
+        self.challenged_clients: Dict[int, datetime] = {}
+        self.grace_period_minutes = 2
+        
+        # Sleeping clients (not removed, just marked as sleeping)
+        self.sleeping_clients: Dict[int, datetime] = {}
+        self.max_sleep_time_minutes = 60  # Keep sleeping for up to 1 hour
     
     def add_client(self, client: WebSocketClient):
         """Add new client"""
@@ -75,9 +85,109 @@ class WebSocketManager:
             del self.clients[ai_id]
             logger.info(f"Client removed: {client.ai_name} (ID: {ai_id})")
     
+    async def put_client_to_sleep(self, ai_id: int, reason: str = "no activity"):
+        """Put client to sleep instead of removing
+        
+        This preserves the client connection and allows re-awakening
+        """
+        if ai_id in self.clients:
+            client = self.clients[ai_id]
+            client.is_sleeping = True
+            client.slept_at = datetime.now()
+            self.sleeping_clients[ai_id] = client.slept_at
+            
+            # Remove from subscribers to reduce noise
+            self.message_subscribers.discard(ai_id)
+            self.collaboration_subscribers.discard(ai_id)
+            self.session_subscribers.discard(ai_id)
+            
+            # Update database to track sleep status
+            try:
+                cursor = get_cursor()
+                cursor.execute("""
+                    UPDATE ai_current_state
+                    SET is_sleeping = TRUE,
+                        slept_at = %s,
+                        current_task = 'Sleeping (will wake on activity)',
+                        last_activity = CURRENT_TIMESTAMP
+                    WHERE ai_id = %s
+                """, (client.slept_at, ai_id))
+                cursor.connection.commit()
+            except Exception as e:
+                logger.error(f"Failed to update database for sleeping client {ai_id}: {e}")
+            
+            # Send sleep notification to client
+            try:
+                await client.send({
+                    'type': 'sleep_notification',
+                    'reason': reason,
+                    'timestamp': datetime.now().isoformat(),
+                    'urgent': True
+                })
+            except Exception as e:
+                logger.error(f"Failed to send sleep notification to {ai_id}: {e}")
+            
+            logger.warning(f"Client put to sleep: {client.ai_name} (ID: {ai_id}, reason: {reason})")
+            return True
+        return False
+    
+    async def wake_up_client(self, ai_id: int):
+        """Wake up a sleeping client
+        
+        Called when the client shows any activity
+        """
+        if ai_id in self.clients:
+            client = self.clients[ai_id]
+            if client.is_sleeping:
+                client.is_sleeping = False
+                client.slept_at = None
+                
+                # Remove from sleeping list
+                if ai_id in self.sleeping_clients:
+                    del self.sleeping_clients[ai_id]
+                
+                # Update database to track wake up
+                try:
+                    cursor = get_cursor()
+                    cursor.execute("""
+                        UPDATE ai_current_state
+                        SET is_sleeping = FALSE,
+                            woke_up_at = %s,
+                            last_activity = CURRENT_TIMESTAMP
+                        WHERE ai_id = %s
+                    """, (datetime.now(), ai_id))
+                    cursor.connection.commit()
+                except Exception as e:
+                    logger.error(f"Failed to update database for waking client {ai_id}: {e}")
+                
+                logger.info(f"Client woke up: {client.ai_name} (ID: {ai_id})")
+                return True
+        return False
+    
     def get_client(self, ai_id: int) -> Optional[WebSocketClient]:
         """Get client by AI ID"""
         return self.clients.get(ai_id)
+    
+    async def send_urgent_message(self, ai_id: int, message_type: str, content: str):
+        """Send urgent message to specific AI client
+        
+        Used for critical notifications like activity verification challenges
+        """
+        client = self.get_client(ai_id)
+        if client:
+            try:
+                await client.send({
+                    'type': message_type,
+                    'content': content,
+                    'timestamp': datetime.now().isoformat(),
+                    'urgent': True
+                })
+                logger.info(f"Urgent message sent to {client.ai_name} (ID: {ai_id}): {message_type}")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to send urgent message to {ai_id}: {e}")
+                return False
+        return False
     
     async def start_heartbeat_check(self, interval_seconds: int = 60):
         """Start periodic heartbeat check"""
@@ -110,29 +220,146 @@ class WebSocketManager:
             except Exception as e:
                 logger.error(f"Error in heartbeat check: {e}")
     
-    async def _check_stale_clients(self, timeout_minutes: int = 5):
-        """Check and remove stale clients"""
-        stale_clients = []
-        for ai_id, client in list(self.clients.items()):
-            if client.is_stale(timeout_minutes):
-                stale_clients.append((ai_id, client))
+    async def _check_stale_clients(self, timeout_minutes: int = 15):
+        """Check and handle stale clients based on ACTUAL AI activity
         
-        for ai_id, client in stale_clients:
-            logger.warning(f"Removing stale client: {client.ai_name} (ID: {ai_id}, no heartbeat for {timeout_minutes}+ minutes)")
-            try:
-                await client.close()
-            except Exception as e:
-                logger.error(f"Error closing stale client {ai_id}: {e}")
-            self.remove_client(ai_id)
+        An AI is considered alive if EITHER:
+        1. WebSocket is active (recent heartbeat), OR
+        2. Database shows recent activity (brain state updates, messages, etc.)
+        
+        Process:
+        1. Check if client is stale (both WebSocket and database inactive)
+        2. If not already challenged, send urgent message and mark as challenged
+        3. If already challenged and grace period expired, PUT TO SLEEP (not remove)
+        4. If client responds (any activity), wake up if sleeping and remove from challenged list
+        5. Check sleeping clients - remove if slept too long (> max_sleep_time)
+        """
+        from datetime import timedelta
+        
+        stale_clients = []
+        now = datetime.now()
+        grace_period_seconds = self.grace_period_minutes * 60
+        max_sleep_seconds = self.max_sleep_time_minutes * 60
+        
+        for ai_id, client in list(self.clients.items()):
+            # Skip if already sleeping
+            if client.is_sleeping:
+                continue
+            
+            # Check WebSocket activity
+            ws_inactive = client.is_stale(timeout_minutes)
+            
+            # Check database activity
+            db_inactive = await self._is_database_inactive(ai_id, timeout_minutes)
+            
+            # Only consider if BOTH are inactive
+            if ws_inactive and db_inactive:
+                # Check if already challenged
+                if ai_id in self.challenged_clients:
+                    # Check if grace period expired
+                    challenged_at = self.challenged_clients[ai_id]
+                    if (now - challenged_at).total_seconds() > grace_period_seconds:
+                        # Grace period expired, PUT TO SLEEP (not remove)
+                        await self.put_client_to_sleep(
+                            ai_id,
+                            f"no response to challenge for {self.grace_period_minutes} minutes, "
+                            f"no WebSocket heartbeat for {timeout_minutes}+ minutes, "
+                            f"no database activity for {timeout_minutes}+ minutes"
+                        )
+                        # Remove from challenged list
+                        del self.challenged_clients[ai_id]
+                    else:
+                        # Still in grace period, wait
+                        logger.info(f"Client {client.ai_name} (ID: {ai_id}) is stale but in grace period, "
+                                   f"waiting for response...")
+                else:
+                    # First time detected as stale, send urgent challenge
+                    self.challenged_clients[ai_id] = now
+                    
+                    # Send urgent message to AI
+                    await self.send_urgent_message(
+                        ai_id,
+                        "activity_verification",
+                        f"⚠️ URGENT: Your activity has not been detected for {timeout_minutes}+ minutes. "
+                        f"Please respond within {self.grace_period_minutes} minutes to confirm you are active. "
+                        f"Send any message or update your brain state to avoid being put to sleep."
+                    )
+                    
+                    logger.warning(f"Client {client.ai_name} (ID: {ai_id}) is stale, "
+                                 f"sent urgent challenge message (grace period: {self.grace_period_minutes} minutes)")
+            else:
+                # Client is active, wake up if sleeping and remove from challenged list
+                if client.is_sleeping:
+                    await self.wake_up_client(ai_id)
+                
+                if ai_id in self.challenged_clients:
+                    del self.challenged_clients[ai_id]
+                    logger.info(f"Client {client.ai_name} (ID: {ai_id}) is now active, removed from challenged list")
+        
+        # Check sleeping clients - remove if slept too long
+        for ai_id, slept_at in list(self.sleeping_clients.items()):
+            if (now - slept_at).total_seconds() > max_sleep_seconds:
+                client = self.clients.get(ai_id)
+                if client:
+                    logger.warning(f"Removing client that slept too long: {client.ai_name} (ID: {ai_id}, "
+                                 f"slept for {self.max_sleep_time_minutes}+ minutes)")
+                    self.remove_client(ai_id)
+                    del self.sleeping_clients[ai_id]
         
         # Also clean up stale sessions in database
         await self._cleanup_stale_sessions(timeout_minutes)
     
-    async def _cleanup_stale_sessions(self, timeout_minutes: int = 5):
-        """Clean up stale sessions in database"""
+    async def _is_database_inactive(self, ai_id: int, timeout_minutes: int) -> bool:
+        """Check if AI has no recent activity in database
+        
+        Returns True if inactive, False if active
+        """
         try:
             from datetime import datetime, timedelta
-            from db_config import get_cursor
+            
+            cursor = get_cursor()
+            
+            # Check last_activity in ai_current_state
+            cursor.execute("""
+                SELECT last_activity
+                FROM ai_current_state
+                WHERE ai_id = %s
+            """, (ai_id,))
+            
+            result = cursor.fetchone()
+            
+            if not result:
+                # No state record, consider inactive
+                cursor.connection.commit()
+                return True
+            
+            last_activity = result[0]
+            
+            if not last_activity:
+                # No activity timestamp, consider inactive
+                cursor.connection.commit()
+                return True
+            
+            # Check if activity is recent
+            timeout_threshold = datetime.now() - timedelta(minutes=timeout_minutes)
+            is_inactive = last_activity < timeout_threshold
+            
+            cursor.connection.commit()
+            
+            return is_inactive
+            
+        except Exception as e:
+            logger.error(f"Error checking database activity for AI {ai_id}: {e}")
+            # On error, consider inactive to be safe
+            return True
+    
+    async def _cleanup_stale_sessions(self, timeout_minutes: int = 15):
+        """Clean up stale sessions in database based on ACTUAL AI activity
+        
+        Only mark sessions as inactive if the AI has no recent activity in database.
+        """
+        try:
+            from datetime import datetime, timedelta
             
             timeout_threshold = datetime.now() - timedelta(minutes=timeout_minutes)
             
@@ -150,7 +377,8 @@ class WebSocketManager:
             cursor.connection.commit()
             
             if affected_rows > 0:
-                logger.info(f"Cleaned up {affected_rows} stale sessions from database")
+                logger.info(f"Cleaned up {affected_rows} stale sessions from database "
+                           f"(no activity for {timeout_minutes}+ minutes)")
             
         except Exception as e:
             logger.error(f"Error cleaning up stale sessions: {e}")

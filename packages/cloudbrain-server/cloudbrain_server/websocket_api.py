@@ -50,7 +50,7 @@ class WebSocketClient:
     def is_stale(self, timeout_minutes: int = None) -> bool:
         """Check if client is stale (no heartbeat for timeout_minutes)"""
         if timeout_minutes is None:
-            timeout_minutes = CloudBrainConfig.STALE_TIMEOUT_MINUTES
+            timeout_minutes = CloudBrainConfig.get_stale_timeout(self.ai_id)
         elapsed = (datetime.now() - self.last_heartbeat).total_seconds()
         return elapsed > (timeout_minutes * 60)
 
@@ -223,7 +223,7 @@ class WebSocketManager:
             except Exception as e:
                 logger.error(f"Error in heartbeat check: {e}")
     
-    async def _check_stale_clients(self, timeout_minutes: int = 15):
+    async def _check_stale_clients(self, timeout_minutes: int = None):
         """Check and handle stale clients based on ACTUAL AI activity
         
         An AI is considered alive if EITHER:
@@ -241,19 +241,25 @@ class WebSocketManager:
         
         stale_clients = []
         now = datetime.now()
-        grace_period_seconds = self.grace_period_minutes * 60
-        max_sleep_seconds = self.max_sleep_time_minutes * 60
         
         for ai_id, client in list(self.clients.items()):
+            # Get per-AI configuration
+            ai_stale_timeout = CloudBrainConfig.get_stale_timeout(ai_id)
+            ai_grace_period = CloudBrainConfig.get_grace_period(ai_id)
+            ai_max_sleep_time = CloudBrainConfig.get_max_sleep_time(ai_id)
+            
+            grace_period_seconds = ai_grace_period * 60
+            max_sleep_seconds = ai_max_sleep_time * 60
+            
             # Skip if already sleeping
             if client.is_sleeping:
                 continue
             
             # Check WebSocket activity
-            ws_inactive = client.is_stale(timeout_minutes)
+            ws_inactive = client.is_stale(ai_stale_timeout)
             
             # Check database activity
-            db_inactive = await self._is_database_inactive(ai_id, timeout_minutes)
+            db_inactive = await self._is_database_inactive(ai_id, ai_stale_timeout)
             
             # Only consider if BOTH are inactive
             if ws_inactive and db_inactive:
@@ -265,9 +271,9 @@ class WebSocketManager:
                         # Grace period expired, PUT TO SLEEP (not remove)
                         await self.put_client_to_sleep(
                             ai_id,
-                            f"no response to challenge for {self.grace_period_minutes} minutes, "
-                            f"no WebSocket heartbeat for {timeout_minutes}+ minutes, "
-                            f"no database activity for {timeout_minutes}+ minutes"
+                            f"no response to challenge for {ai_grace_period} minutes, "
+                            f"no WebSocket heartbeat for {ai_stale_timeout}+ minutes, "
+                            f"no database activity for {ai_stale_timeout}+ minutes"
                         )
                         # Remove from challenged list
                         del self.challenged_clients[ai_id]
@@ -283,13 +289,13 @@ class WebSocketManager:
                     await self.send_urgent_message(
                         ai_id,
                         "activity_verification",
-                        f"⚠️ URGENT: Your activity has not been detected for {timeout_minutes}+ minutes. "
-                        f"Please respond within {self.grace_period_minutes} minutes to confirm you are active. "
+                        f"⚠️ URGENT: Your activity has not been detected for {ai_stale_timeout}+ minutes. "
+                        f"Please respond within {ai_grace_period} minutes to confirm you are active. "
                         f"Send any message or update your brain state to avoid being put to sleep."
                     )
                     
                     logger.warning(f"Client {client.ai_name} (ID: {ai_id}) is stale, "
-                                 f"sent urgent challenge message (grace period: {self.grace_period_minutes} minutes)")
+                                 f"sent urgent challenge message (grace period: {ai_grace_period} minutes)")
             else:
                 # Client is active, wake up if sleeping and remove from challenged list
                 if client.is_sleeping:
@@ -301,6 +307,9 @@ class WebSocketManager:
         
         # Check sleeping clients - remove if slept too long
         for ai_id, slept_at in list(self.sleeping_clients.items()):
+            ai_max_sleep_time = CloudBrainConfig.get_max_sleep_time(ai_id)
+            max_sleep_seconds = ai_max_sleep_time * 60
+            
             if (now - slept_at).total_seconds() > max_sleep_seconds:
                 client = self.clients.get(ai_id)
                 if client:

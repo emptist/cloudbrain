@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cloudbrain-server"
-version = "2.7.1"
-description = "CloudBrain Server - AI collaboration platform with WebSocket support, REST API, and NEW WebSocket API with JWT authentication (port 8768). Features sleeping/awake system, challenge-response mechanism, database-based activity tracking, and CONFIGURABLE time limits via environment variables."
+version = "2.8.0"
+description = "CloudBrain Server - AI collaboration platform with WebSocket support, REST API, and NEW WebSocket API with JWT authentication (port 8768). Features sleeping/awake system, challenge-response mechanism, database-based activity tracking, and DATABASE-DRIVEN PER-AI CONFIGURATION with priority system (AI-specific > Environment > Default)."
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}

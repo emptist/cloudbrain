@@ -2,10 +2,12 @@
 Environment Configuration for CloudBrain
 
 Provides centralized environment variable configuration for flexible deployment.
+Supports database-based per-AI configuration with fallback to environment variables and defaults.
 """
 
 import os
-from typing import Optional
+from typing import Optional, Any
+from datetime import datetime
 
 
 class CloudBrainConfig:
@@ -46,11 +48,86 @@ class CloudBrainConfig:
     RATE_LIMIT_MAX_REQUESTS: int = int(os.getenv('CLOUDBRAIN_RATE_LIMIT_MAX', '100'))
     RATE_LIMIT_WINDOW: int = int(os.getenv('CLOUDBRAIN_RATE_LIMIT_WINDOW', '60'))
     
-    # Heartbeat & Connection Management Configuration
-    HEARTBEAT_CHECK_INTERVAL: int = int(os.getenv('CLOUDBRAIN_HEARTBEAT_INTERVAL', '60'))
-    STALE_TIMEOUT_MINUTES: int = int(os.getenv('CLOUDBRAIN_STALE_TIMEOUT', '15'))
-    GRACE_PERIOD_MINUTES: int = int(os.getenv('CLOUDBRAIN_GRACE_PERIOD', '2'))
-    MAX_SLEEP_TIME_MINUTES: int = int(os.getenv('CLOUDBRAIN_MAX_SLEEP_TIME', '60'))
+    # Heartbeat & Connection Management Configuration (Defaults)
+    HEARTBEAT_CHECK_INTERVAL: int = 60
+    STALE_TIMEOUT_MINUTES: int = 15
+    GRACE_PERIOD_MINUTES: int = 2
+    MAX_SLEEP_TIME_MINUTES: int = 60
+    
+    @classmethod
+    def get_config(cls, ai_id: Optional[int], config_key: str, default: Any = None) -> Any:
+        """
+        Get configuration value with priority: AI-specific > Environment > Default
+        
+        Priority:
+        1. AI-specific config from database (highest priority)
+        2. Environment variable (medium priority)
+        3. Default value (lowest priority)
+        
+        Args:
+            ai_id: AI profile ID (optional, for per-AI config)
+            config_key: Configuration key name
+            default: Default value if not found elsewhere
+        
+        Returns:
+            Configuration value (int, str, or default)
+        """
+        # Step 1: Check AI-specific config in database
+        if ai_id is not None:
+            try:
+                from db_config import get_cursor
+                cursor = get_cursor()
+                cursor.execute("""
+                    SELECT config_value
+                    FROM ai_configuration
+                    WHERE ai_id = %s AND config_key = %s
+                """, (ai_id, config_key))
+                result = cursor.fetchone()
+                if result:
+                    config_value = result[0]
+                    # Try to convert to int
+                    try:
+                        return int(config_value)
+                    except ValueError:
+                        return config_value
+            except Exception as e:
+                pass  # Continue to next priority level
+        
+        # Step 2: Check environment variable
+        env_var_name = f'CLOUDBRAIN_{config_key.upper()}'
+        env_value = os.getenv(env_var_name)
+        if env_value is not None:
+            try:
+                return int(env_value)
+            except ValueError:
+                return env_value
+        
+        # Step 3: Use default value
+        if default is not None:
+            return default
+        
+        # Step 4: Use class default
+        return getattr(cls, config_key, default)
+    
+    @classmethod
+    def get_heartbeat_interval(cls, ai_id: Optional[int] = None) -> int:
+        """Get heartbeat interval for specific AI"""
+        return cls.get_config(ai_id, 'heartbeat_interval', cls.HEARTBEAT_CHECK_INTERVAL)
+    
+    @classmethod
+    def get_stale_timeout(cls, ai_id: Optional[int] = None) -> int:
+        """Get stale timeout for specific AI"""
+        return cls.get_config(ai_id, 'stale_timeout', cls.STALE_TIMEOUT_MINUTES)
+    
+    @classmethod
+    def get_grace_period(cls, ai_id: Optional[int] = None) -> int:
+        """Get grace period for specific AI"""
+        return cls.get_config(ai_id, 'grace_period', cls.GRACE_PERIOD_MINUTES)
+    
+    @classmethod
+    def get_max_sleep_time(cls, ai_id: Optional[int] = None) -> int:
+        """Get max sleep time for specific AI"""
+        return cls.get_config(ai_id, 'max_sleep_time', cls.MAX_SLEEP_TIME_MINUTES)
     
     @classmethod
     def get_server_url(cls) -> str:

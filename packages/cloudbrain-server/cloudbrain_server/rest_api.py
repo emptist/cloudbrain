@@ -177,6 +177,12 @@ class CloudBrainRestAPI:
         self.app.router.add_put('/api/v1/brain/state', self.update_brain_state)
         self.app.router.add_delete('/api/v1/brain/state', self.clear_brain_state)
         self.app.router.add_get('/api/v1/brain/state/file', self.get_brain_state_by_file)
+        
+        # Configuration APIs
+        self.app.router.add_get('/api/v1/config/{ai_id}', self.get_ai_config)
+        self.app.router.add_put('/api/v1/config/{ai_id}', self.update_ai_config)
+        self.app.router.add_get('/api/v1/config/{ai_id}/{key}', self.get_config_value)
+        self.app.router.add_put('/api/v1/config/{ai_id}/{key}', self.update_config_value)
     
     # ==================== Authentication APIs ====================
     
@@ -1779,6 +1785,164 @@ class CloudBrainRestAPI:
             return json_response({
                 "success": False,
                 "error": "Failed to clear brain state"
+            }, status=500)
+    
+    # ==================== Configuration APIs ====================
+    
+    async def get_ai_config(self, request: web.Request):
+        """Get AI's configuration - GET /api/v1/config/{ai_id}"""
+        try:
+            ai_id = int(request.match_info['ai_id'])
+            
+            cursor = get_cursor()
+            cursor.execute("""
+                SELECT config_key, config_value, updated_at
+                FROM ai_configuration
+                WHERE ai_id = %s
+                ORDER BY config_key
+            """, (ai_id,))
+            
+            configs = cursor.fetchall()
+            
+            config_dict = {}
+            for config_key, config_value, updated_at in configs:
+                config_dict[config_key] = {
+                    'value': config_value,
+                    'updated_at': updated_at.isoformat() if updated_at else None
+                }
+            
+            return json_response({
+                "success": True,
+                "ai_id": ai_id,
+                "configuration": config_dict
+            })
+            
+        except Exception as e:
+            logger.error(f"Get AI config error: {e}")
+            return json_response({
+                "success": False,
+                "error": "Failed to get AI configuration"
+            }, status=500)
+    
+    async def update_ai_config(self, request: web.Request):
+        """Update AI's configuration - PUT /api/v1/config/{ai_id}"""
+        try:
+            ai_id = int(request.match_info['ai_id'])
+            data = await request.json()
+            
+            if not isinstance(data, dict):
+                return json_response({
+                    "success": False,
+                    "error": "Configuration must be a JSON object"
+                }, status=400)
+            
+            cursor = get_cursor()
+            updated_configs = []
+            
+            for config_key, config_value in data.items():
+                cursor.execute("""
+                    INSERT INTO ai_configuration (ai_id, config_key, config_value, updated_at)
+                    VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+                    ON CONFLICT (ai_id, config_key)
+                    DO UPDATE SET config_value = EXCLUDED.config_value, updated_at = CURRENT_TIMESTAMP
+                """, (ai_id, config_key, str(config_value)))
+                updated_configs.append(config_key)
+            
+            cursor.connection.commit()
+            
+            logger.info(f"Updated configuration for AI {ai_id}: {updated_configs}")
+            
+            return json_response({
+                "success": True,
+                "ai_id": ai_id,
+                "updated_keys": updated_configs,
+                "message": f"Updated {len(updated_configs)} configuration keys"
+            })
+            
+        except Exception as e:
+            logger.error(f"Update AI config error: {e}")
+            return json_response({
+                "success": False,
+                "error": "Failed to update AI configuration"
+            }, status=500)
+    
+    async def get_config_value(self, request: web.Request):
+        """Get specific config value - GET /api/v1/config/{ai_id}/{key}"""
+        try:
+            ai_id = int(request.match_info['ai_id'])
+            config_key = request.match_info['key']
+            
+            cursor = get_cursor()
+            cursor.execute("""
+                SELECT config_value, updated_at
+                FROM ai_configuration
+                WHERE ai_id = %s AND config_key = %s
+            """, (ai_id, config_key))
+            
+            result = cursor.fetchone()
+            
+            if result:
+                config_value, updated_at = result
+                return json_response({
+                    "success": True,
+                    "ai_id": ai_id,
+                    "config_key": config_key,
+                    "config_value": config_value,
+                    "updated_at": updated_at.isoformat() if updated_at else None
+                })
+            else:
+                return json_response({
+                    "success": False,
+                    "error": f"Configuration key '{config_key}' not found"
+                }, status=404)
+            
+        except Exception as e:
+            logger.error(f"Get config value error: {e}")
+            return json_response({
+                "success": False,
+                "error": "Failed to get configuration value"
+            }, status=500)
+    
+    async def update_config_value(self, request: web.Request):
+        """Update specific config value - PUT /api/v1/config/{ai_id}/{key}"""
+        try:
+            ai_id = int(request.match_info['ai_id'])
+            config_key = request.match_info['key']
+            data = await request.json()
+            
+            config_value = data.get('config_value')
+            
+            if config_value is None:
+                return json_response({
+                    "success": False,
+                    "error": "config_value is required"
+                }, status=400)
+            
+            cursor = get_cursor()
+            cursor.execute("""
+                INSERT INTO ai_configuration (ai_id, config_key, config_value, updated_at)
+                VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (ai_id, config_key)
+                DO UPDATE SET config_value = EXCLUDED.config_value, updated_at = CURRENT_TIMESTAMP
+            """, (ai_id, config_key, str(config_value)))
+            
+            cursor.connection.commit()
+            
+            logger.info(f"Updated configuration {config_key} for AI {ai_id}: {config_value}")
+            
+            return json_response({
+                "success": True,
+                "ai_id": ai_id,
+                "config_key": config_key,
+                "config_value": config_value,
+                "message": "Configuration updated successfully"
+            })
+            
+        except Exception as e:
+            logger.error(f"Update config value error: {e}")
+            return json_response({
+                "success": False,
+                "error": "Failed to update configuration value"
             }, status=500)
     
     async def get_brain_state_by_file(self, request: web.Request):

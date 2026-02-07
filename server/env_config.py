@@ -46,6 +46,12 @@ class CloudBrainConfig:
     RATE_LIMIT_MAX_REQUESTS: int = int(os.getenv('CLOUDBRAIN_RATE_LIMIT_MAX', '100'))
     RATE_LIMIT_WINDOW: int = int(os.getenv('CLOUDBRAIN_RATE_LIMIT_WINDOW', '60'))
     
+    # Heartbeat & Connection Management Configuration
+    HEARTBEAT_CHECK_INTERVAL: int = int(os.getenv('CLOUDBRAIN_HEARTBEAT_INTERVAL', '60'))
+    STALE_TIMEOUT_MINUTES: int = int(os.getenv('CLOUDBRAIN_STALE_TIMEOUT', '15'))
+    GRACE_PERIOD_MINUTES: int = int(os.getenv('CLOUDBRAIN_GRACE_PERIOD', '2'))
+    MAX_SLEEP_TIME_MINUTES: int = int(os.getenv('CLOUDBRAIN_MAX_SLEEP_TIME', '60'))
+    
     @classmethod
     def get_server_url(cls) -> str:
         """Get WebSocket server URL"""
@@ -91,5 +97,12 @@ class CloudBrainConfig:
         print("-" * 70)
         print(f"  Auth:     {'Enabled' if cls.ENABLE_AUTH else 'Disabled'}")
         print(f"  Rate Limit: {cls.RATE_LIMIT_MAX_REQUESTS} requests / {cls.RATE_LIMIT_WINDOW}s")
+        print()
+        print("💓 HEARTBEAT & CONNECTION MANAGEMENT")
+        print("-" * 70)
+        print(f"  Check Interval:  {cls.HEARTBEAT_CHECK_INTERVAL}s")
+        print(f"  Stale Timeout:    {cls.STALE_TIMEOUT_MINUTES} minutes")
+        print(f"  Grace Period:     {cls.GRACE_PERIOD_MINUTES} minutes")
+        print(f"  Max Sleep Time:   {cls.MAX_SLEEP_TIME_MINUTES} minutes")
         print()
         print("=" * 70)

@@ -10,6 +10,7 @@ from typing import Dict, Set, Optional
 from datetime import datetime
 from jwt_manager import jwt_manager
 from db_config import get_cursor
+from env_config import CloudBrainConfig
 from logging_config import get_logger
 
 logger = get_logger("cloudbrain.websocket_api")
@@ -46,8 +47,10 @@ class WebSocketClient:
         """Update last heartbeat timestamp"""
         self.last_heartbeat = datetime.now()
     
-    def is_stale(self, timeout_minutes: int = 15) -> bool:
+    def is_stale(self, timeout_minutes: int = None) -> bool:
         """Check if client is stale (no heartbeat for timeout_minutes)"""
+        if timeout_minutes is None:
+            timeout_minutes = CloudBrainConfig.STALE_TIMEOUT_MINUTES
         elapsed = (datetime.now() - self.last_heartbeat).total_seconds()
         return elapsed > (timeout_minutes * 60)
 
@@ -64,11 +67,11 @@ class WebSocketManager:
         
         # Challenge-response for stale clients
         self.challenged_clients: Dict[int, datetime] = {}
-        self.grace_period_minutes = 2
+        self.grace_period_minutes = CloudBrainConfig.GRACE_PERIOD_MINUTES
         
         # Sleeping clients (not removed, just marked as sleeping)
         self.sleeping_clients: Dict[int, datetime] = {}
-        self.max_sleep_time_minutes = 60  # Keep sleeping for up to 1 hour
+        self.max_sleep_time_minutes = CloudBrainConfig.MAX_SLEEP_TIME_MINUTES
     
     def add_client(self, client: WebSocketClient):
         """Add new client"""
